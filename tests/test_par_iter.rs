@@ -67,3 +67,20 @@ fn test_sorted_frontiers() {
 
     assert_eq!(new_frontier, frontier);
 }
+
+#[test]
+fn test_enumerate() {
+    let frontier = Frontier::new();
+
+    let m = 24;
+    let n = 1000;
+
+    (0..m).into_par_iter().for_each(|_| {
+        for i in 0..n {
+            frontier.push(i);
+        }
+    });
+
+    println!("{:?}", frontier.vector_sizes());
+    assert_eq!(m * n, frontier.par_iter().enumerate().count());
+}

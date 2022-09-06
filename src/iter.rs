@@ -1,5 +1,6 @@
 use crate::*;
 use std::sync::Arc;
+use rayon::iter::plumbing::Producer;
 
 pub struct FrontierIter<'a, T> {
     father: &'a Frontier<T>,
@@ -91,11 +92,41 @@ impl<'a, T> core::iter::Iterator for FrontierIter<'a, T> {
         Some(result)
     }
 
+    fn count(self) -> usize {
+        self.len()
+    }
+
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.len(), Some(self.len()))
     }
 }
 
+impl<'a, T> core::iter::DoubleEndedIterator for FrontierIter<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        loop {
+            // if we finished the values
+            if self.vec_idx_end == 0 && self.value_idx_end == 0 {
+                return None;
+            }
+
+            if self.vec_idx_start >= self.vec_idx_end
+                && self.value_idx_start >= self.value_idx_end {
+                return None;
+            }
+
+            if self.value_idx_end > 0 {
+                break
+            }
+
+            self.vec_idx_end -= 1;
+            self.value_idx_end = self.father.data[self.vec_idx_end].len();
+        }
+
+        let result = &self.father.data[self.vec_idx_end][self.value_idx_end];
+        self.value_idx_end -= 1;
+        Some(result)
+    }
+}
 
 impl<'a, T: Sync> UnindexedProducer for FrontierIter<'a, T>
 {
@@ -170,7 +201,6 @@ impl<'a, T: Sync> UnindexedProducer for FrontierIter<'a, T>
                 (self, Some(new_iter))
             }
         }
-
     }
 
     fn fold_with<F>(self, folder: F) -> F
@@ -178,5 +208,73 @@ impl<'a, T: Sync> UnindexedProducer for FrontierIter<'a, T>
         F: rayon::iter::plumbing::Folder<Self::Item>,
     {
         folder.consume_iter(self)
+    }
+}
+
+impl<'a, T: Sync> Producer for FrontierIter<'a, T> {
+    type Item = &'a T;
+    type IntoIter = Self;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self
+    }
+
+    fn split_at(mut self, index: usize) -> (Self, Self) {
+        let start_idx = self.cumulative_lens[self.vec_idx_start] + self.value_idx_start;
+        let split_idx = index + start_idx;
+        match self.cumulative_lens.binary_search(&split_idx) {
+            // the split happens at the margin between two vectors
+            Ok(vec_idx_mid) => {
+                // high part
+                let new_iter = Self{
+                    father: self.father,
+                    
+                    vec_idx_start: vec_idx_mid,
+                    value_idx_start: 0,
+
+                    vec_idx_end: self.vec_idx_end,
+                    value_idx_end: self.value_idx_end,
+                    
+                    cumulative_lens: self.cumulative_lens.clone(),
+                };
+
+                // low part
+                self.vec_idx_end = vec_idx_mid - 1;
+                self.value_idx_end = self.father.data[self.vec_idx_end].len();
+
+                // return the two halfs
+                debug_assert_ne!(self.len(), 0);
+                debug_assert_ne!(new_iter.len(), 0);
+                (self, new_iter)
+            }
+            // the split point is inside a vector so gg ez
+            Err(vec_idx_mid) => {
+                let vec_idx_mid = vec_idx_mid - 1;
+                let value_idx_mid = split_idx - self.cumulative_lens[vec_idx_mid];
+                
+                // high part
+                let new_iter = Self{
+                    father: self.father,
+                    
+                    vec_idx_start: vec_idx_mid,
+                    value_idx_start: value_idx_mid,
+
+                    vec_idx_end: self.vec_idx_end,
+                    value_idx_end: self.value_idx_end,
+                    
+                    cumulative_lens: self.cumulative_lens.clone(),
+                };
+
+                // low part
+                self.vec_idx_end = vec_idx_mid;
+                self.value_idx_end = value_idx_mid;
+
+                // return the two halfs
+                debug_assert_ne!(self.len(), 0);
+                debug_assert_ne!(new_iter.len(), 0);
+                (self, new_iter)
+            }
+        }
+
     }
 }

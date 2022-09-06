@@ -8,6 +8,9 @@ pub use iter::*;
 mod par_iter;
 pub use par_iter::*;
 
+mod par_iter_indexed;
+pub use par_iter_indexed::*;
+
 #[derive(Debug)]
 pub struct Frontier<T> {
     data: Vec<Vec<T>>,
