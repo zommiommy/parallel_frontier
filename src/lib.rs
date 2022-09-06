@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use rayon::iter::plumbing::UnindexedProducer;
+use rayon::{iter::plumbing::UnindexedProducer, prelude::*};
 
 mod iter;
 pub use iter::*;
@@ -8,11 +8,24 @@ pub use iter::*;
 mod par_iter;
 pub use par_iter::*;
 
-pub struct Frontier<T>{
+#[derive(Debug)]
+pub struct Frontier<T> {
     data: Vec<Vec<T>>,
 }
 
-impl<T> TryFrom<Vec<Vec<T>>> for Frontier<T> {
+impl<T> PartialEq for Frontier<T>
+where
+    T: PartialEq + Send + Sync,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.len() == other.len() && self.iter().zip(other.iter()).all(|(a, b)| a.eq(b))
+    }
+}
+
+impl<T> TryFrom<Vec<Vec<T>>> for Frontier<T>
+where
+    T: Send + Sync,
+{
     type Error = String;
 
     /// Try to create a frontier from the provided vector of elements.
@@ -26,11 +39,9 @@ impl<T> TryFrom<Vec<Vec<T>>> for Frontier<T> {
                 ),
                 value.len(),
                 Frontier::<T>::system_number_of_threads()
-            ))
+            ));
         }
-        Ok(Self{
-            data: value
-        })
+        Ok(Self { data: value })
     }
 }
 
@@ -42,7 +53,6 @@ impl<T> Into<Vec<Vec<T>>> for Frontier<T> {
 }
 
 impl<T> core::default::Default for Frontier<T> {
-
     /// Create default frontier object with `system_number_of_threads` empty sub-vectors.
     fn default() -> Self {
         Self::new()
@@ -50,9 +60,8 @@ impl<T> core::default::Default for Frontier<T> {
 }
 
 impl<T> Frontier<T> {
-
     /// Create new frontier object with `system_number_of_threads` empty sub-vectors.
-    pub fn new() -> Self{
+    pub fn new() -> Self {
         let n_threads = Frontier::<T>::system_number_of_threads();
         Frontier {
             data: (0..n_threads).map(|_| Vec::new()).collect::<Vec<_>>(),
@@ -60,34 +69,33 @@ impl<T> Frontier<T> {
     }
 
     /// Create new frontier object with `system_number_of_threads` empty sub-vectors.
-    /// 
+    ///
     /// # Implementation details
     /// Do note that the provided capacity is distributed roughly uniformely
     /// across the `system_number_of_threads` subvectors.
-    pub fn with_capacity(capacity: usize) -> Self{
+    pub fn with_capacity(capacity: usize) -> Self {
         let n_threads = Frontier::<T>::system_number_of_threads();
         Frontier {
-            data: (0..n_threads).map(|_| Vec::with_capacity(capacity / n_threads)).collect::<Vec<_>>(),
+            data: (0..n_threads)
+                .map(|_| Vec::with_capacity(capacity / n_threads))
+                .collect::<Vec<_>>(),
         }
     }
 
     /// Push value onto frontier.
-    /// 
+    ///
     /// # Implementation details  
     /// A frontier object handles a synchronization free *unordered* vector
     /// by assigning a sub-vector to exactly each thread and letting each
     /// thread handle the push to their subvector.
     /// When the `push` method is called outside of a Rayon thread pool
     /// we simply push objects to the first element in the pool.
-    /// 
+    ///
     /// # Arguments
     /// * `value`: T - Object to be pushed onto of the frontier.
     pub fn push(&self, value: T) {
         let thread_id = rayon::current_thread_index().unwrap_or(0);
-        unsafe{
-            (*((&self.data[thread_id]) as *const Vec<T> as *mut Vec<T>))
-            .push(value)
-        };
+        unsafe { (*((&self.data[thread_id]) as *const Vec<T> as *mut Vec<T>)).push(value) };
     }
 
     /// Returns number of the threads, i.e. subvectors, in frontier objects.
@@ -96,7 +104,7 @@ impl<T> Frontier<T> {
     }
 
     /// Returns system number of the threads, i.e. subvectors, in frontier objects.
-    pub fn system_number_of_threads()-> usize{
+    pub fn system_number_of_threads() -> usize {
         rayon::current_num_threads().max(1)
     }
 
@@ -116,18 +124,44 @@ impl<T> Frontier<T> {
     }
 
     /// Converts the frontier into a sequential iterator of the elements.
-    pub fn iter(&self) -> FrontierIter<'_, T>{
+    pub fn iter(&self) -> FrontierIter<'_, T> {
         FrontierIter::new(self)
     }
 
-    /// Converts the frontier into a parallel iterator of the elements.
-    pub fn par_iter(&self) -> FrontierParIter<'_, T>{
-        FrontierParIter::new(self)
+    /// Iter the sub-vectors sequentially.
+    pub fn iter_vectors(&self) -> impl Iterator<Item = &Vec<T>> + '_ {
+        self.data.iter()
     }
 
     /// Returns vector with the sizes of each subvector.
     pub fn vector_sizes(&self) -> Vec<usize> {
         self.data.iter().map(|v| v.len()).collect::<Vec<_>>()
     }
+
+    /// Converts the frontier into a parallel iterator of the elements.
+    pub fn par_iter(&self) -> FrontierParIter<'_, T> {
+        FrontierParIter::new(self)
+    }
 }
 
+impl<T> Frontier<T>
+where
+    T: Send + Sync,
+{
+    /// Iter the sub-vectors in parallel.
+    pub fn par_iter_vectors(&self) -> impl IndexedParallelIterator<Item = &Vec<T>> + '_ {
+        self.data.par_iter()
+    }
+
+    /// Iter the sub-vectors in parallel and mutably.
+    pub fn par_iter_vectors_mut(
+        &mut self,
+    ) -> impl IndexedParallelIterator<Item = &mut Vec<T>> + '_ {
+        self.data.par_iter_mut()
+    }
+
+    /// Iter and consume the sub-vectors in parallel.
+    pub fn into_par_iter_vectors(self) -> impl IndexedParallelIterator<Item = Vec<T>> {
+        self.data.into_par_iter()
+    }
+}
