@@ -25,7 +25,7 @@ where
 impl<T> TryFrom<Vec<Vec<T>>> for Frontier<T> {
     type Error = String;
 
-    /// Try to create a frontier from the provided vector of elements.
+    /// Try to create a frontier from the provided vector of vectors or elements.
     fn try_from(value: Vec<Vec<T>>) -> Result<Self, Self::Error> {
         if value.len() != Frontier::<T>::system_number_of_threads() {
             return Err(format!(
@@ -39,6 +39,18 @@ impl<T> TryFrom<Vec<Vec<T>>> for Frontier<T> {
             ));
         }
         Ok(Self { data: value })
+    }
+}
+
+impl<T> From<Vec<T>> for Frontier<T>
+where
+    T: Send + Sync,
+{
+    /// Try to create a frontier from the provided vector of elements.
+    fn from(value: Vec<T>) -> Self {
+        let frontier = Frontier::default();
+        value.into_par_iter().for_each(|v| frontier.push(v));
+        frontier
     }
 }
 
