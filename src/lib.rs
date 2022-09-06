@@ -46,7 +46,7 @@ impl<T> From<Vec<T>> for Frontier<T>
 where
     T: Send + Sync,
 {
-    /// Try to create a frontier from the provided vector of elements.
+    /// Create a frontier from the provided vector of elements.
     fn from(value: Vec<T>) -> Self {
         let frontier = Frontier::default();
         value.into_par_iter().for_each(|v| frontier.push(v));
