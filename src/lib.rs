@@ -15,17 +15,14 @@ pub struct Frontier<T> {
 
 impl<T> PartialEq for Frontier<T>
 where
-    T: PartialEq + Send + Sync,
+    T: PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
         self.len() == other.len() && self.iter().zip(other.iter()).all(|(a, b)| a.eq(b))
     }
 }
 
-impl<T> TryFrom<Vec<Vec<T>>> for Frontier<T>
-where
-    T: Send + Sync,
-{
+impl<T> TryFrom<Vec<Vec<T>>> for Frontier<T> {
     type Error = String;
 
     /// Try to create a frontier from the provided vector of elements.
