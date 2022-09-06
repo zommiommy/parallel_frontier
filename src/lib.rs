@@ -48,8 +48,8 @@ where
 {
     /// Create a frontier from the provided vector of elements.
     fn from(value: Vec<T>) -> Self {
-        let frontier = Frontier::default();
-        value.into_par_iter().for_each(|v| frontier.push(v));
+        let mut frontier = Frontier::default();
+        frontier.data[0] = value;
         frontier
     }
 }
