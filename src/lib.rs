@@ -43,8 +43,6 @@ impl<T> TryFrom<Vec<Vec<T>>> for Frontier<T> {
 }
 
 impl<T> From<Vec<T>> for Frontier<T>
-where
-    T: Send + Sync,
 {
     /// Create a frontier from the provided vector of elements.
     fn from(value: Vec<T>) -> Self {
