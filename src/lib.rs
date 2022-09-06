@@ -95,6 +95,19 @@ impl<T> Frontier<T> {
         unsafe { (*((&self.data[thread_id]) as *const Vec<T> as *mut Vec<T>)).push(value) };
     }
 
+    /// Pop element from frontier.
+    ///
+    /// # Implementation details  
+    /// A frontier object handles a synchronization free *unordered* vector
+    /// by assigning a sub-vector to exactly each thread and letting each
+    /// thread handle the pop from their subvector.
+    /// When the `pop` method is called outside of a Rayon thread pool
+    /// we simply pop objects from the first element in the pool.
+    pub fn pop(&self) -> Option<T> {
+        let thread_id = rayon::current_thread_index().unwrap_or(0);
+        unsafe { (*((&self.data[thread_id]) as *const Vec<T> as *mut Vec<T>)).pop() }
+    }
+
     /// Returns number of the threads, i.e. subvectors, in frontier objects.
     pub fn number_of_threads(&self) -> usize {
         self.data.len()
