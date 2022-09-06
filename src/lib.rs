@@ -133,6 +133,11 @@ impl<T> Frontier<T> {
         self.data.iter().map(|v| v.len()).sum()
     }
 
+    /// Returns whether frontier is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Clears all sub-vectors, maintaining the reached vector capacity.
     pub fn clear(&mut self) {
         self.data.iter_mut().for_each(|v| v.clear());
