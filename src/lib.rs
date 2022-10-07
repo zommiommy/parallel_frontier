@@ -42,8 +42,7 @@ impl<T> TryFrom<Vec<Vec<T>>> for Frontier<T> {
     }
 }
 
-impl<T> From<Vec<T>> for Frontier<T>
-{
+impl<T> From<Vec<T>> for Frontier<T> {
     /// Create a frontier from the provided vector of elements.
     fn from(value: Vec<T>) -> Self {
         let mut frontier = Frontier::default();
@@ -56,6 +55,16 @@ impl<T> Into<Vec<Vec<T>>> for Frontier<T> {
     /// Converts and consumes the frontier into a vector of vectors.
     fn into(self) -> Vec<Vec<T>> {
         self.data
+    }
+}
+
+impl<T> Into<Vec<T>> for Frontier<T>
+where
+    T: Clone,
+{
+    /// Converts and consumes the frontier into a vector of vectors.
+    fn into(self) -> Vec<T> {
+        self.data.concat()
     }
 }
 
