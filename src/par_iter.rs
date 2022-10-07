@@ -2,7 +2,7 @@ use crate::*;
 use rayon::iter::plumbing::bridge_unindexed;
 
 pub struct FrontierParIter<'a, T> {
-    father: &'a Frontier<T>,
+    pub(crate) father: &'a Frontier<T>,
 }
 
 impl<'a, T> FrontierParIter<'a, T> {
