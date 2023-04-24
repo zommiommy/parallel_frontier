@@ -11,7 +11,7 @@ pub use par_iter::*;
 mod par_iter_indexed;
 pub use par_iter_indexed::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Frontier<T> {
     data: Vec<Vec<T>>,
 }
