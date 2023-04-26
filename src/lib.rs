@@ -79,6 +79,7 @@ impl<T> core::default::Default for Frontier<T> {
 }
 
 impl<T> Frontier<T> {
+    #[inline]
     /// Create new frontier object with `system_number_of_threads` empty sub-vectors.
     pub fn new() -> Self {
         let n_threads = Frontier::<T>::system_number_of_threads();
@@ -86,7 +87,7 @@ impl<T> Frontier<T> {
             data: (0..n_threads).map(|_| Vec::new()).collect::<Vec<_>>(),
         }
     }
-
+    #[inline]
     /// Create new frontier object with `system_number_of_threads` empty sub-vectors.
     ///
     /// # Implementation details
@@ -101,6 +102,7 @@ impl<T> Frontier<T> {
         }
     }
 
+    #[inline]
     /// Push value onto frontier.
     ///
     /// # Implementation details  
@@ -117,6 +119,7 @@ impl<T> Frontier<T> {
         unsafe { (*((&self.data[thread_id]) as *const Vec<T> as *mut Vec<T>)).push(value) };
     }
 
+    #[inline]
     /// Pop element from frontier.
     ///
     /// # Implementation details  
@@ -130,51 +133,61 @@ impl<T> Frontier<T> {
         unsafe { (*((&self.data[thread_id]) as *const Vec<T> as *mut Vec<T>)).pop() }
     }
 
+    #[inline]
     /// Returns number of the threads, i.e. subvectors, in frontier objects.
     pub fn number_of_threads(&self) -> usize {
         self.data.len()
     }
 
+    #[inline]
     /// Returns system number of the threads, i.e. subvectors, in frontier objects.
     pub fn system_number_of_threads() -> usize {
         rayon::current_num_threads().max(1)
     }
 
+    #[inline]
     /// Returns total length of the frontier, i.e. the total number of elements in all sub-vectors.
     pub fn len(&self) -> usize {
         self.data.iter().map(|v| v.len()).sum()
     }
 
+    #[inline]
     /// Returns whether frontier is empty.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    #[inline]
     /// Clears all sub-vectors, maintaining the reached vector capacity.
     pub fn clear(&mut self) {
         self.data.iter_mut().for_each(|v| v.clear());
     }
 
+    #[inline]
     /// Shrinks to fit all sub-vectors.
     pub fn shrink_to_fit(&mut self) {
         self.data.iter_mut().for_each(|v| v.shrink_to_fit());
     }
 
+    #[inline]
     /// Converts the frontier into a sequential iterator of the elements.
     pub fn iter(&self) -> FrontierIter<'_, T> {
         FrontierIter::new(self)
     }
 
+    #[inline]
     /// Iter the sub-vectors sequentially.
     pub fn iter_vectors(&self) -> impl Iterator<Item = &Vec<T>> + '_ {
         self.data.iter()
     }
 
+    #[inline]
     /// Returns vector with the sizes of each subvector.
     pub fn vector_sizes(&self) -> Vec<usize> {
         self.data.iter().map(|v| v.len()).collect::<Vec<_>>()
     }
 
+    #[inline]
     /// Converts the frontier into a parallel iterator of the elements.
     pub fn par_iter(&self) -> FrontierParIter<'_, T> {
         FrontierParIter::new(self)
@@ -184,12 +197,14 @@ impl<T> Frontier<T> {
 impl<T> Frontier<T>
 where
     T: Send + Sync,
-{
+{   
+    #[inline]
     /// Iter the sub-vectors in parallel.
     pub fn par_iter_vectors(&self) -> impl IndexedParallelIterator<Item = &Vec<T>> + '_ {
         self.data.par_iter()
     }
 
+    #[inline]
     /// Iter the sub-vectors in parallel and mutably.
     pub fn par_iter_vectors_mut(
         &mut self,
@@ -197,6 +212,7 @@ where
         self.data.par_iter_mut()
     }
 
+    #[inline]
     /// Iter and consume the sub-vectors in parallel.
     pub fn into_par_iter_vectors(self) -> impl IndexedParallelIterator<Item = Vec<T>> {
         self.data.into_par_iter()
