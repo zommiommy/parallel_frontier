@@ -1,4 +1,4 @@
-use crate::*;
+use crate::prelude::*;
 use rayon::iter::plumbing::*;
 
 impl<'a, T: Send + Sync> IndexedParallelIterator for FrontierParIter<'a, T> {

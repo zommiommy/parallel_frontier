@@ -1,7 +1,6 @@
 extern crate parallel_frontier;
-use parallel_frontier::*;
+use parallel_frontier::prelude::*;
 use rayon::iter::plumbing::UnindexedProducer;
-use rayon::prelude::*;
 
 #[test]
 fn test_par_iter() {

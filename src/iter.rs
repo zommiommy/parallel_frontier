@@ -1,10 +1,11 @@
-use crate::*;
-use std::sync::Arc;
+use crate::prelude::*;
+use rayon::iter::plumbing::UnindexedProducer;
 use rayon::iter::plumbing::Producer;
+use std::sync::Arc;
 
 pub struct FrontierIter<'a, T> {
     father: &'a Frontier<T>,
-    
+
     vec_idx_start: usize,
     value_idx_start: usize,
 
@@ -30,25 +31,27 @@ impl<'a, T> core::fmt::Debug for FrontierIter<'a, T> {
 
 impl<'a, T> FrontierIter<'a, T> {
     pub fn new(father: &'a Frontier<T>) -> Self {
-        FrontierIter{
+        FrontierIter {
             father,
 
             vec_idx_start: 0,
             value_idx_start: 0,
-            
+
             vec_idx_end: father.number_of_threads() - 1,
-            value_idx_end: father.data.last().unwrap().len(),
+            value_idx_end: father.as_ref().last().unwrap().len(),
 
             cumulative_lens: Arc::new(
-                father.data.iter()
+                father
+                    .as_ref()
+                    .iter()
                     .map(|v| v.len())
                     .scan(0, |acc, val| {
                         let res = *acc;
                         *acc += val;
                         Some(res)
-                    }
-                    ).collect::<Vec<_>>()
-                )
+                    })
+                    .collect::<Vec<_>>(),
+            ),
         }
     }
 
@@ -72,15 +75,15 @@ impl<'a, T> core::iter::Iterator for FrontierIter<'a, T> {
                 return None;
             }
 
-            current_vec = &self.father.data[self.vec_idx_start];
+            current_vec = &self.father.as_ref()[self.vec_idx_start];
 
-            if self.vec_idx_start == self.vec_idx_end
-                && self.value_idx_start >= self.value_idx_end {
+            if self.vec_idx_start == self.vec_idx_end && self.value_idx_start >= self.value_idx_end
+            {
                 return None;
             }
 
             if self.value_idx_start < current_vec.len() {
-                break
+                break;
             }
 
             self.value_idx_start = 0;
@@ -109,27 +112,26 @@ impl<'a, T> core::iter::DoubleEndedIterator for FrontierIter<'a, T> {
                 return None;
             }
 
-            if self.vec_idx_start >= self.vec_idx_end
-                && self.value_idx_start >= self.value_idx_end {
+            if self.vec_idx_start >= self.vec_idx_end && self.value_idx_start >= self.value_idx_end
+            {
                 return None;
             }
 
             if self.value_idx_end > 0 {
-                break
+                break;
             }
 
             self.vec_idx_end -= 1;
-            self.value_idx_end = self.father.data[self.vec_idx_end].len();
+            self.value_idx_end = self.father.as_ref()[self.vec_idx_end].len();
         }
 
-        let result = &self.father.data[self.vec_idx_end][self.value_idx_end];
+        let result = &self.father.as_ref()[self.vec_idx_end][self.value_idx_end];
         self.value_idx_end -= 1;
         Some(result)
     }
 }
 
-impl<'a, T: Sync> UnindexedProducer for FrontierIter<'a, T>
-{
+impl<'a, T: Sync> UnindexedProducer for FrontierIter<'a, T> {
     type Item = &'a T;
 
     /// Split the file in two approximately balanced streams
@@ -140,33 +142,40 @@ impl<'a, T: Sync> UnindexedProducer for FrontierIter<'a, T>
         }
 
         let start_idx = self.cumulative_lens[self.vec_idx_start] + self.value_idx_start;
-        let end_idx   = self.cumulative_lens[self.vec_idx_end]   + self.value_idx_end;
+        let end_idx = self.cumulative_lens[self.vec_idx_end] + self.value_idx_end;
 
         let split_idx = (start_idx + end_idx) / 2;
 
         debug_assert!(split_idx < end_idx);
         debug_assert!(start_idx < split_idx);
-        debug_assert!(split_idx < self.father.len(), "start_idx: {} end_idx: {} split_idx: {} father len:{}", start_idx, end_idx, split_idx, self.father.len());
+        debug_assert!(
+            split_idx < self.father.len(),
+            "start_idx: {} end_idx: {} split_idx: {} father len:{}",
+            start_idx,
+            end_idx,
+            split_idx,
+            self.father.len()
+        );
 
         match self.cumulative_lens.binary_search(&split_idx) {
             // the split happens at the margin between two vectors
             Ok(vec_idx_mid) => {
                 // high part
-                let new_iter = Self{
+                let new_iter = Self {
                     father: self.father,
-                    
+
                     vec_idx_start: vec_idx_mid,
                     value_idx_start: 0,
 
                     vec_idx_end: self.vec_idx_end,
                     value_idx_end: self.value_idx_end,
-                    
+
                     cumulative_lens: self.cumulative_lens.clone(),
                 };
 
                 // low part
                 self.vec_idx_end = vec_idx_mid - 1;
-                self.value_idx_end = self.father.data[self.vec_idx_end].len();
+                self.value_idx_end = self.father.as_ref()[self.vec_idx_end].len();
 
                 // return the two halfs
                 debug_assert_ne!(self.len(), 0);
@@ -177,17 +186,17 @@ impl<'a, T: Sync> UnindexedProducer for FrontierIter<'a, T>
             Err(vec_idx_mid) => {
                 let vec_idx_mid = vec_idx_mid - 1;
                 let value_idx_mid = split_idx - self.cumulative_lens[vec_idx_mid];
-                
+
                 // high part
-                let new_iter = Self{
+                let new_iter = Self {
                     father: self.father,
-                    
+
                     vec_idx_start: vec_idx_mid,
                     value_idx_start: value_idx_mid,
 
                     vec_idx_end: self.vec_idx_end,
                     value_idx_end: self.value_idx_end,
-                    
+
                     cumulative_lens: self.cumulative_lens.clone(),
                 };
 
@@ -226,21 +235,21 @@ impl<'a, T: Sync> Producer for FrontierIter<'a, T> {
             // the split happens at the margin between two vectors
             Ok(vec_idx_mid) => {
                 // high part
-                let new_iter = Self{
+                let new_iter = Self {
                     father: self.father,
-                    
+
                     vec_idx_start: vec_idx_mid,
                     value_idx_start: 0,
 
                     vec_idx_end: self.vec_idx_end,
                     value_idx_end: self.value_idx_end,
-                    
+
                     cumulative_lens: self.cumulative_lens.clone(),
                 };
 
                 // low part
                 self.vec_idx_end = vec_idx_mid - 1;
-                self.value_idx_end = self.father.data[self.vec_idx_end].len();
+                self.value_idx_end = self.father.as_ref()[self.vec_idx_end].len();
 
                 // return the two halfs
                 debug_assert_ne!(self.len(), 0);
@@ -251,17 +260,17 @@ impl<'a, T: Sync> Producer for FrontierIter<'a, T> {
             Err(vec_idx_mid) => {
                 let vec_idx_mid = vec_idx_mid - 1;
                 let value_idx_mid = split_idx - self.cumulative_lens[vec_idx_mid];
-                
+
                 // high part
-                let new_iter = Self{
+                let new_iter = Self {
                     father: self.father,
-                    
+
                     vec_idx_start: vec_idx_mid,
                     value_idx_start: value_idx_mid,
 
                     vec_idx_end: self.vec_idx_end,
                     value_idx_end: self.value_idx_end,
-                    
+
                     cumulative_lens: self.cumulative_lens.clone(),
                 };
 
@@ -275,6 +284,5 @@ impl<'a, T: Sync> Producer for FrontierIter<'a, T> {
                 (self, new_iter)
             }
         }
-
     }
 }

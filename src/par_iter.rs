@@ -1,4 +1,4 @@
-use crate::*;
+use crate::prelude::*;
 use rayon::iter::plumbing::bridge_unindexed;
 
 pub struct FrontierParIter<'a, T> {
