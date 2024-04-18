@@ -1,26 +1,27 @@
 use std::convert::TryFrom;
 
 use crate::prelude::*;
-use rayon::prelude::*;
+use rayon::{prelude::*, ThreadPool};
 
 #[derive(Debug, Clone)]
-pub struct Frontier<T> {
+pub struct Frontier<'a, T> {
     data: Vec<Vec<T>>,
+    threads: Option<&'a ThreadPool>,
 }
 
-impl<T> AsRef<[Vec<T>]> for Frontier<T> {
+impl<'a, T> AsRef<[Vec<T>]> for Frontier<'a, T> {
     fn as_ref(&self) -> &[Vec<T>] {
         self.data.as_ref()
     }
 }
 
-impl<T> AsMut<[Vec<T>]> for Frontier<T> {
+impl<'a, T> AsMut<[Vec<T>]> for Frontier<'a, T> {
     fn as_mut(&mut self) -> &mut [Vec<T>] {
         self.data.as_mut()
     }
 }
 
-impl<T> PartialEq for Frontier<T>
+impl<'a, T> PartialEq for Frontier<'a, T>
 where
     T: PartialEq,
 {
@@ -29,7 +30,7 @@ where
     }
 }
 
-impl<T> TryFrom<Vec<Vec<T>>> for Frontier<T> {
+impl<'a, T> TryFrom<Vec<Vec<T>>> for Frontier<'a, T> {
     type Error = String;
 
     /// Try to create a frontier from the provided vector of vectors or elements.
@@ -45,11 +46,14 @@ impl<T> TryFrom<Vec<Vec<T>>> for Frontier<T> {
                 Frontier::<T>::system_number_of_threads()
             ));
         }
-        Ok(Self { data: value })
+        Ok(Self {
+            data: value,
+            threads: None,
+        })
     }
 }
 
-impl<T> From<Vec<T>> for Frontier<T> {
+impl<'a, T> From<Vec<T>> for Frontier<'a, T> {
     /// Create a frontier from the provided vector of elements.
     fn from(value: Vec<T>) -> Self {
         let mut frontier = Frontier::default();
@@ -58,31 +62,29 @@ impl<T> From<Vec<T>> for Frontier<T> {
     }
 }
 
-impl<T> Into<Vec<Vec<T>>> for Frontier<T> {
-    /// Converts and consumes the frontier into a vector of vectors.
-    fn into(self) -> Vec<Vec<T>> {
-        self.data
+impl<'a, T> From<Frontier<'a, T>> for Vec<Vec<T>> {
+    fn from(val: Frontier<'a, T>) -> Self {
+        val.data
     }
 }
 
-impl<T> Into<Vec<T>> for Frontier<T>
+impl<'a, T> From<Frontier<'a, T>> for Vec<T>
 where
     T: Clone,
 {
-    /// Converts and consumes the frontier into a vector of vectors.
-    fn into(self) -> Vec<T> {
-        self.concat()
+    fn from(val: Frontier<'a, T>) -> Self {
+        val.concat()
     }
 }
 
-impl<T> core::default::Default for Frontier<T> {
+impl<'a, T> core::default::Default for Frontier<'a, T> {
     /// Create default frontier object with `system_number_of_threads` empty sub-vectors.
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Clone> Frontier<T> {
+impl<'a, T: Clone> Frontier<'a, T> {
     #[inline]
     /// Converts the frontier into a vector composed of the inner vectors.
     pub fn concat(&self) -> Vec<T> {
@@ -90,13 +92,14 @@ impl<T: Clone> Frontier<T> {
     }
 }
 
-impl<T> Frontier<T> {
+impl<'a, T> Frontier<'a, T> {
     #[inline]
     /// Create new frontier object with `system_number_of_threads` empty sub-vectors.
     pub fn new() -> Self {
         let n_threads = Frontier::<T>::system_number_of_threads();
         Frontier {
             data: (0..n_threads).map(|_| Vec::new()).collect::<Vec<_>>(),
+            threads: None,
         }
     }
     #[inline]
@@ -111,6 +114,42 @@ impl<T> Frontier<T> {
             data: (0..n_threads)
                 .map(|_| Vec::with_capacity(capacity / n_threads))
                 .collect::<Vec<_>>(),
+            threads: None,
+        }
+    }
+
+    #[inline]
+    /// Create new frontier object for the specified [`ThreadPool`].
+    pub fn with_threads(thread_pool: &'a ThreadPool, capacity: Option<usize>) -> Self {
+        let n_threads = thread_pool.current_num_threads();
+        Frontier {
+            data: (0..n_threads)
+                .map(|_| Vec::with_capacity(capacity.unwrap_or(0) / n_threads))
+                .collect::<Vec<_>>(),
+            threads: Some(thread_pool),
+        }
+    }
+
+    #[inline(always)]
+    fn get_current_thread_index(&self) -> usize {
+        if let Some(thread_pool) = self.threads {
+            // We are using a custom ThreadPool so we want the call to come
+            // from the same ThreadPool or from the main thread.
+            if let Some(index) = thread_pool.current_thread_index() {
+                // The call is from the custom ThreadPool
+                index
+            } else {
+                // The call is from outside the custom ThreadPool so we want
+                // it to originate from no pool at all
+                if rayon::current_thread_index().is_some() {
+                    panic!("Parallel frontier called from external thread pool")
+                } else {
+                    0
+                }
+            }
+        } else {
+            // We are not using a custom ThreadPool so the global one is used
+            rayon::current_thread_index().unwrap_or(0)
         }
     }
 
@@ -127,7 +166,7 @@ impl<T> Frontier<T> {
     /// # Arguments
     /// * `value`: T - Object to be pushed onto of the frontier.
     pub fn push(&self, value: T) {
-        let thread_id = rayon::current_thread_index().unwrap_or(0);
+        let thread_id = self.get_current_thread_index();
         unsafe { (*((&self.data[thread_id]) as *const Vec<T> as *mut Vec<T>)).push(value) };
     }
 
@@ -141,7 +180,7 @@ impl<T> Frontier<T> {
     /// When the `pop` method is called outside of a Rayon thread pool
     /// we simply pop objects from the first element in the pool.
     pub fn pop(&self) -> Option<T> {
-        let thread_id = rayon::current_thread_index().unwrap_or(0);
+        let thread_id = self.get_current_thread_index();
         unsafe { (*((&self.data[thread_id]) as *const Vec<T> as *mut Vec<T>)).pop() }
     }
 
@@ -152,7 +191,7 @@ impl<T> Frontier<T> {
     }
 
     #[inline]
-    /// Returns system number of the threads, i.e. subvectors, in frontier objects.
+    /// Returns system number of the threads, i.e. subvectors, in frontier objects without a user [`ThreadPool`].
     pub fn system_number_of_threads() -> usize {
         rayon::current_num_threads().max(1)
     }
@@ -206,7 +245,7 @@ impl<T> Frontier<T> {
     }
 }
 
-impl<T> Frontier<T>
+impl<'a, T> Frontier<'a, T>
 where
     T: Send + Sync,
 {

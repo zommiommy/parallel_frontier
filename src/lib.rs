@@ -7,6 +7,5 @@ pub mod prelude {
     pub use crate::frontier::*;
     pub use crate::iter::*;
     pub use crate::par_iter::*;
-    pub use crate::par_iter_indexed::*;
     pub use rayon::prelude::*;
 }
