@@ -1,6 +1,6 @@
 extern crate parallel_frontier;
 use parallel_frontier::prelude::*;
-use rayon::iter::plumbing::UnindexedProducer;
+use rayon::{iter::plumbing::UnindexedProducer, ThreadPoolBuilder};
 
 #[test]
 fn test_par_iter() {
@@ -42,6 +42,27 @@ fn test_par_iter_with_par_push() {
 
     println!("{:?}", frontier.vector_sizes());
     assert_eq!(m * n, frontier.par_iter().copied().count());
+}
+
+#[test]
+fn test_par_iter_with_par_push_with_thread_pool() {
+    let pool = ThreadPoolBuilder::default().num_threads(3).build().unwrap();
+    let frontier = Frontier::with_threads(&pool, None);
+
+    let m = 24;
+    let n = 1000;
+
+    pool.install(|| {
+        (0..m).into_par_iter().for_each(|_| {
+            for i in 0..n {
+                frontier.push(i);
+            }
+        });
+    });
+
+    println!("{:?}", frontier.vector_sizes());
+    assert_eq!(m * n, frontier.par_iter().copied().count());
+    assert_eq!(3, frontier.number_of_threads());
 }
 
 #[test]
