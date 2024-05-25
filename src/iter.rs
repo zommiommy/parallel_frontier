@@ -1,10 +1,10 @@
 use crate::prelude::*;
-use rayon::iter::plumbing::UnindexedProducer;
 use rayon::iter::plumbing::Producer;
+use rayon::iter::plumbing::UnindexedProducer;
 use std::sync::Arc;
 
 pub struct FrontierIter<'a, T> {
-    father: &'a Frontier<T>,
+    father: &'a Frontier<'a, T>,
 
     vec_idx_start: usize,
     value_idx_start: usize,
