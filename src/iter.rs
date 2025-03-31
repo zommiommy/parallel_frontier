@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2025 Tommaso Fontana
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR LGPL-2.1-or-later
+ */
+
 use crate::prelude::*;
 use rayon::iter::plumbing::Producer;
 use rayon::iter::plumbing::UnindexedProducer;
@@ -11,7 +17,7 @@ pub struct FrontierIter<'a, T> {
 
     // inclusive
     vec_idx_end: usize,
-    // esclusive
+    // exclusive
     value_idx_end: usize,
 
     cumulative_lens: Arc<Vec<usize>>,
@@ -182,7 +188,6 @@ impl<'a, T: Sync> UnindexedProducer for FrontierIter<'a, T> {
                 debug_assert_ne!(new_iter.len(), 0);
                 (self, Some(new_iter))
             }
-            // the split point is inside a vector so gg ez
             Err(vec_idx_mid) => {
                 let vec_idx_mid = vec_idx_mid - 1;
                 let value_idx_mid = split_idx - self.cumulative_lens[vec_idx_mid];
@@ -204,7 +209,7 @@ impl<'a, T: Sync> UnindexedProducer for FrontierIter<'a, T> {
                 self.vec_idx_end = vec_idx_mid;
                 self.value_idx_end = value_idx_mid;
 
-                // return the two halfs
+                // return the two halves
                 debug_assert_ne!(self.len(), 0);
                 debug_assert_ne!(new_iter.len(), 0);
                 (self, Some(new_iter))
@@ -251,12 +256,11 @@ impl<'a, T: Sync> Producer for FrontierIter<'a, T> {
                 self.vec_idx_end = vec_idx_mid - 1;
                 self.value_idx_end = self.father.as_ref()[self.vec_idx_end].len();
 
-                // return the two halfs
+                // return the two halves
                 debug_assert_ne!(self.len(), 0);
                 debug_assert_ne!(new_iter.len(), 0);
                 (self, new_iter)
             }
-            // the split point is inside a vector so gg ez
             Err(vec_idx_mid) => {
                 let vec_idx_mid = vec_idx_mid - 1;
                 let value_idx_mid = split_idx - self.cumulative_lens[vec_idx_mid];

@@ -1,4 +1,8 @@
-use std::convert::TryFrom;
+/*
+ * SPDX-FileCopyrightText: 2025 Tommaso Fontana
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR LGPL-2.1-or-later
+ */
 
 use crate::prelude::*;
 use rayon::{prelude::*, ThreadPool};
@@ -72,7 +76,8 @@ impl<'a, T: Clone> Frontier<'a, T> {
 
 impl<'a, T> Frontier<'a, T> {
     #[inline]
-    /// Create new frontier object with `system_number_of_threads` empty shards.
+    /// Create a new parallel frontier with
+    /// [`Frontier::system_number_of_threads`] empty shards.
     pub fn new() -> Self {
         let n_threads = Frontier::<T>::system_number_of_threads();
         Frontier {
@@ -81,11 +86,14 @@ impl<'a, T> Frontier<'a, T> {
         }
     }
     #[inline]
-    /// Create new frontier object with `system_number_of_threads` empty shards.
+    /// Creates a new parallel frontier with
+    /// [`Frontier::system_number_of_threads`] empty shards and given overall
+    /// capacity.
     ///
     /// # Implementation details
-    /// Do note that the provided capacity is distributed roughly uniformly
-    /// across the `system_number_of_threads` shards.
+    ///
+    /// The provided capacity is distributed roughly uniformly across the
+    /// shards.
     pub fn with_capacity(capacity: usize) -> Self {
         let n_threads = Frontier::<T>::system_number_of_threads();
         Frontier {
@@ -97,7 +105,8 @@ impl<'a, T> Frontier<'a, T> {
     }
 
     #[inline]
-    /// Create new frontier object for the specified [`ThreadPool`].
+    /// Creates a new parallel frontier for the specified [`ThreadPool`] and
+    /// given overall capacity.
     pub fn with_threads(thread_pool: &'a ThreadPool, capacity: Option<usize>) -> Self {
         let n_threads = thread_pool.current_num_threads();
         Frontier {
@@ -132,15 +141,15 @@ impl<'a, T> Frontier<'a, T> {
     }
 
     #[inline]
-    /// Pushes an element to the frontier.
+    /// Pushes an element to the parallel frontier.
     ///
     /// # Implementation details
     ///
-    /// A frontier object handles a synchronization free *unordered* vector by
-    /// assigning a shard to exactly each thread and letting each thread
-    /// handle the push to their shard. When the `push` method is called
-    /// outside of a Rayon thread pool we simply push objects to the first
-    /// element in the pool.
+    /// A parallel frontier handles a synchronization free *unordered* vector by
+    /// assigning a shard to exactly each thread and letting each thread handle
+    /// the push to their shard. When the `push` method is called outside of a
+    /// Rayon thread pool we simply push objects to the first element in the
+    /// pool.
     ///
     /// # Arguments
     ///
