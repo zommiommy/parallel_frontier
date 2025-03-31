@@ -2,15 +2,13 @@
 name = "parallel_frontier"
 version = "0.1.0"
 edition = "2024"
-description = "Unordered vector of elements with constant time concurrent push."
+description = "Queue-like frontier for breath-first visits on graphs that supports constant-time concurrent pushes and parallel iteration"
 repository = "https://github.com/zommiommy/parallel_frontier/"
 license = "Apache-2.0 OR LGPL-2.1-or-later"
 readme = "README.md"
-keywords = ["graph", "bfs"]
+keywords = ["graph", "bfs", "queue"]
 categories = ["data-structures"]
-
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Tommaso Fontana <tommaso.fontana.96@gmail.com>"]
 
 [dependencies]
-rayon="1.10.0"
+rayon = "1.10.0"
