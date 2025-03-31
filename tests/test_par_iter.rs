@@ -6,7 +6,7 @@
 
 extern crate parallel_frontier;
 use parallel_frontier::prelude::*;
-use rayon::{iter::plumbing::UnindexedProducer, ThreadPoolBuilder};
+use rayon::{iter::plumbing::UnindexedProducer, prelude::*, ThreadPoolBuilder};
 
 #[test]
 fn test_par_iter() {
