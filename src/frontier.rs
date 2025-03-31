@@ -30,29 +30,6 @@ where
     }
 }
 
-impl<'a, T> TryFrom<Vec<Vec<T>>> for Frontier<'a, T> {
-    type Error = String;
-
-    /// Try to create a frontier from the provided vector of vectors or elements.
-    fn try_from(value: Vec<Vec<T>>) -> Result<Self, Self::Error> {
-        if value.len() != Frontier::<T>::system_number_of_threads() {
-            return Err(format!(
-                concat!(
-                    "You have provided a vector with {} sub-vectors ",
-                    "to be converted into a Frontier object, but to do ",
-                    "so we expected exactly {} sub-vectors."
-                ),
-                value.len(),
-                Frontier::<T>::system_number_of_threads()
-            ));
-        }
-        Ok(Self {
-            data: value,
-            threads: None,
-        })
-    }
-}
-
 impl<'a, T> From<Vec<T>> for Frontier<'a, T> {
     /// Create a frontier from the provided vector of elements.
     fn from(value: Vec<T>) -> Self {
@@ -78,7 +55,8 @@ where
 }
 
 impl<'a, T> core::default::Default for Frontier<'a, T> {
-    /// Create default frontier object with `system_number_of_threads` empty sub-vectors.
+    /// Creates a default frontier object with
+    /// [`Frontier::system_number_of_threads`] empty shards.
     fn default() -> Self {
         Self::new()
     }
@@ -86,7 +64,7 @@ impl<'a, T> core::default::Default for Frontier<'a, T> {
 
 impl<'a, T: Clone> Frontier<'a, T> {
     #[inline]
-    /// Converts the frontier into a vector composed of the inner vectors.
+    /// Returns the concatenation of the shards.
     pub fn concat(&self) -> Vec<T> {
         self.data.concat()
     }
@@ -94,7 +72,7 @@ impl<'a, T: Clone> Frontier<'a, T> {
 
 impl<'a, T> Frontier<'a, T> {
     #[inline]
-    /// Create new frontier object with `system_number_of_threads` empty sub-vectors.
+    /// Create new frontier object with `system_number_of_threads` empty shards.
     pub fn new() -> Self {
         let n_threads = Frontier::<T>::system_number_of_threads();
         Frontier {
@@ -103,11 +81,11 @@ impl<'a, T> Frontier<'a, T> {
         }
     }
     #[inline]
-    /// Create new frontier object with `system_number_of_threads` empty sub-vectors.
+    /// Create new frontier object with `system_number_of_threads` empty shards.
     ///
     /// # Implementation details
-    /// Do note that the provided capacity is distributed roughly uniformely
-    /// across the `system_number_of_threads` subvectors.
+    /// Do note that the provided capacity is distributed roughly uniformly
+    /// across the `system_number_of_threads` shards.
     pub fn with_capacity(capacity: usize) -> Self {
         let n_threads = Frontier::<T>::system_number_of_threads();
         Frontier {
@@ -154,16 +132,18 @@ impl<'a, T> Frontier<'a, T> {
     }
 
     #[inline]
-    /// Push value onto frontier.
+    /// Pushes an element to the frontier.
     ///
-    /// # Implementation details  
-    /// A frontier object handles a synchronization free *unordered* vector
-    /// by assigning a sub-vector to exactly each thread and letting each
-    /// thread handle the push to their subvector.
-    /// When the `push` method is called outside of a Rayon thread pool
-    /// we simply push objects to the first element in the pool.
+    /// # Implementation details
+    ///
+    /// A frontier object handles a synchronization free *unordered* vector by
+    /// assigning a shard to exactly each thread and letting each thread
+    /// handle the push to their shard. When the `push` method is called
+    /// outside of a Rayon thread pool we simply push objects to the first
+    /// element in the pool.
     ///
     /// # Arguments
+    ///
     /// * `value`: T - Object to be pushed onto of the frontier.
     pub fn push(&self, value: T) {
         let thread_id = self.get_current_thread_index();
@@ -171,33 +151,37 @@ impl<'a, T> Frontier<'a, T> {
     }
 
     #[inline]
-    /// Pop element from frontier.
+    /// Pops an element from frontier.
     ///
-    /// # Implementation details  
-    /// A frontier object handles a synchronization free *unordered* vector
-    /// by assigning a sub-vector to exactly each thread and letting each
-    /// thread handle the pop from their subvector.
-    /// When the `pop` method is called outside of a Rayon thread pool
-    /// we simply pop objects from the first element in the pool.
+    /// # Implementation details
+    ///
+    /// A frontier object handles a synchronization free *unordered* vector by
+    /// assigning a shard to exactly each thread and letting each thread
+    /// handle the pop from their shard. When the `pop` method is called
+    /// outside of a Rayon thread pool we simply pop objects from the first
+    /// element in the pool.
     pub fn pop(&self) -> Option<T> {
         let thread_id = self.get_current_thread_index();
         unsafe { (*((&self.data[thread_id]) as *const Vec<T> as *mut Vec<T>)).pop() }
     }
 
     #[inline]
-    /// Returns number of the threads, i.e. subvectors, in frontier objects.
+    /// Returns the number of the threads, that is, shards, in the parallel
+    /// frontier.
     pub fn number_of_threads(&self) -> usize {
         self.data.len()
     }
 
     #[inline]
-    /// Returns system number of the threads, i.e. subvectors, in frontier objects without a user [`ThreadPool`].
+    /// Returns the system number of the threads, that is, shards, in
+    /// parallel frontiers without a user [`ThreadPool`].
     pub fn system_number_of_threads() -> usize {
         rayon::current_num_threads().max(1)
     }
 
     #[inline]
-    /// Returns total length of the frontier, i.e. the total number of elements in all sub-vectors.
+    /// Returns the total length of the frontier, that is, the total number of
+    /// elements in all shards.
     pub fn len(&self) -> usize {
         self.data.iter().map(|v| v.len()).sum()
     }
@@ -209,13 +193,13 @@ impl<'a, T> Frontier<'a, T> {
     }
 
     #[inline]
-    /// Clears all sub-vectors, maintaining the reached vector capacity.
+    /// Clears all shards, maintaining the reached vector capacity.
     pub fn clear(&mut self) {
         self.data.iter_mut().for_each(|v| v.clear());
     }
 
     #[inline]
-    /// Shrinks to fit all sub-vectors.
+    /// Shrinks to fit all shards.
     pub fn shrink_to_fit(&mut self) {
         self.data.iter_mut().for_each(|v| v.shrink_to_fit());
     }
@@ -227,19 +211,19 @@ impl<'a, T> Frontier<'a, T> {
     }
 
     #[inline]
-    /// Iter the sub-vectors sequentially.
+    /// Iterates on the shards sequentially.
     pub fn iter_vectors(&self) -> impl Iterator<Item = &Vec<T>> + '_ {
         self.data.iter()
     }
 
     #[inline]
-    /// Returns vector with the sizes of each subvector.
+    /// Returns the sizes of shards.
     pub fn vector_sizes(&self) -> Vec<usize> {
         self.data.iter().map(|v| v.len()).collect::<Vec<_>>()
     }
 
     #[inline]
-    /// Converts the frontier into a parallel iterator of the elements.
+    /// Returns a parallel iterator on the elements of the parallel frontier.
     pub fn par_iter(&self) -> FrontierParIter<'_, T> {
         FrontierParIter::new(self)
     }
@@ -250,13 +234,13 @@ where
     T: Send + Sync,
 {
     #[inline]
-    /// Iter the sub-vectors in parallel.
+    /// Returns an parallel iterator on references to the shards.
     pub fn par_iter_vectors(&self) -> impl IndexedParallelIterator<Item = &Vec<T>> + '_ {
         self.data.par_iter()
     }
 
     #[inline]
-    /// Iter the sub-vectors in parallel and mutably.
+    /// Returns a parallel iterator on mutable references to the shards.
     pub fn par_iter_vectors_mut(
         &mut self,
     ) -> impl IndexedParallelIterator<Item = &mut Vec<T>> + '_ {
@@ -264,7 +248,7 @@ where
     }
 
     #[inline]
-    /// Iter and consume the sub-vectors in parallel.
+    /// Consumes self, returning a parallel iterator on the shards.
     pub fn into_par_iter_vectors(self) -> impl IndexedParallelIterator<Item = Vec<T>> {
         self.data.into_par_iter()
     }

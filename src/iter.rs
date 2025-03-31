@@ -19,7 +19,7 @@ pub struct FrontierIter<'a, T> {
 
 impl<'a, T> core::fmt::Debug for FrontierIter<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Frontieriter")
+        f.debug_struct("FrontierIter")
             .field("vec_idx_start", &self.vec_idx_start)
             .field("value_idx_start", &self.value_idx_start)
             .field("vec_idx_end", &self.vec_idx_end)
