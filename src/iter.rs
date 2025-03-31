@@ -24,7 +24,7 @@ pub struct FrontierIter<'a, T> {
     cumulative_lens: Arc<Vec<usize>>,
 }
 
-impl<'a, T> core::fmt::Debug for FrontierIter<'a, T> {
+impl<T> core::fmt::Debug for FrontierIter<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FrontierIter")
             .field("vec_idx_start", &self.vec_idx_start)
@@ -73,7 +73,7 @@ impl<'a, T> FrontierIter<'a, T> {
     }
 }
 
-impl<'a, T> core::iter::ExactSizeIterator for FrontierIter<'a, T> {}
+impl<T> core::iter::ExactSizeIterator for FrontierIter<'_, T> {}
 
 impl<'a, T> core::iter::Iterator for FrontierIter<'a, T> {
     type Item = &'a T;
@@ -115,7 +115,7 @@ impl<'a, T> core::iter::Iterator for FrontierIter<'a, T> {
     }
 }
 
-impl<'a, T> core::iter::DoubleEndedIterator for FrontierIter<'a, T> {
+impl<T> core::iter::DoubleEndedIterator for FrontierIter<'_, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         loop {
             // if we finished the values
