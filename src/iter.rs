@@ -66,6 +66,10 @@ impl<'a, T> FrontierIter<'a, T> {
         let end_idx = self.cumulative_lens[self.vec_idx_end] + self.value_idx_end;
         end_idx - start_idx
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl<'a, T> core::iter::ExactSizeIterator for FrontierIter<'a, T> {}

@@ -1,9 +1,16 @@
 [package]
 name = "parallel_frontier"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+description = "Unordered vector of elements with constant time concurrent push."
+repository = "https://github.com/zommiommy/parallel_frontier/"
+license = "Apache-2.0 OR LGPL-2.1-or-later"
+readme = "README.md"
+keywords = ["graph", "bfs"]
+categories = ["data-structures"]
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rayon="1.5.3"
+rayon="1.10.0"

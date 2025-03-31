@@ -141,6 +141,29 @@ impl<'a, T> Frontier<'a, T> {
     }
 
     #[inline]
+    /// Pushes an element to the frontier on a given thread_id.
+    /// This method is unsafe because you might push values on the queue of
+    /// another thread.
+    ///
+    /// # Implementation details  
+    /// A frontier object handles a synchronization free *unordered* vector
+    /// by assigning a sub-vector to exactly each thread and letting each
+    /// thread handle the push to their subvector.
+    /// When the `push` method is called outside of a Rayon thread pool
+    /// we simply push objects to the first element in the pool.
+    ///
+    /// # Arguments
+    /// * `value`: T - Object to be pushed onto of the frontier.
+    ///
+    /// # Safety
+    /// This method is inherently unsafe because it's the responsibility of
+    /// the caller to ensure that the thread_id is valid and that the
+    /// corresponding thread is not currently using the frontier.
+    pub unsafe fn push_on_thread(&self, value: T, thread_id: usize) {
+        unsafe{(*((&self.data[thread_id]) as *const Vec<T> as *mut Vec<T>)).push(value)};
+    }
+
+    #[inline]
     /// Pushes an element to the parallel frontier.
     ///
     /// # Implementation details
@@ -155,8 +178,9 @@ impl<'a, T> Frontier<'a, T> {
     ///
     /// * `value`: T - Object to be pushed onto of the frontier.
     pub fn push(&self, value: T) {
-        let thread_id = self.get_current_thread_index();
-        unsafe { (*((&self.data[thread_id]) as *const Vec<T> as *mut Vec<T>)).push(value) };
+        unsafe {
+            self.push_on_thread(value, self.get_current_thread_index());
+        };
     }
 
     #[inline]
@@ -170,8 +194,25 @@ impl<'a, T> Frontier<'a, T> {
     /// outside of a Rayon thread pool we simply pop objects from the first
     /// element in the pool.
     pub fn pop(&self) -> Option<T> {
-        let thread_id = self.get_current_thread_index();
-        unsafe { (*((&self.data[thread_id]) as *const Vec<T> as *mut Vec<T>)).pop() }
+        unsafe { self.pop_from_thread(self.get_current_thread_index()) }
+    }
+
+    #[inline]
+    /// Pop element from frontier.
+    ///
+    /// # Implementation details  
+    /// A frontier object handles a synchronization free *unordered* vector
+    /// by assigning a sub-vector to exactly each thread and letting each
+    /// thread handle the pop from their subvector.
+    /// When the `pop` method is called outside of a Rayon thread pool
+    /// we simply pop objects from the first element in the pool.
+    ///
+    /// # Safety
+    /// This method is inherently unsafe because it's the responsibility of
+    /// the caller to ensure that the thread_id is valid and that the
+    /// corresponding thread is not currently using the frontier.
+    pub unsafe fn pop_from_thread(&self, thread_id: usize) -> Option<T> {
+        unsafe{(*((&self.data[thread_id]) as *const Vec<T> as *mut Vec<T>)).pop()}
     }
 
     #[inline]
