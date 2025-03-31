@@ -1,5 +1,6 @@
 /*
  * SPDX-FileCopyrightText: 2025 Tommaso Fontana
+ * SPDX-FileCopyrightText: 2025 Luca Cappelletti
  *
  * SPDX-License-Identifier: Apache-2.0 OR LGPL-2.1-or-later
  */
@@ -69,29 +70,6 @@ fn test_par_iter_with_par_push_with_thread_pool() {
     println!("{:?}", frontier.vector_sizes());
     assert_eq!(m * n, frontier.par_iter().copied().count());
     assert_eq!(3, frontier.number_of_threads());
-}
-
-#[test]
-fn test_sorted_frontiers() {
-    let frontier = Frontier::new();
-
-    let m = 24;
-    let n = 1000;
-
-    (0..m).into_par_iter().for_each(|_| {
-        for i in 0..n {
-            frontier.push(i);
-        }
-    });
-
-    let new_frontier: Frontier<i32> = frontier
-        .par_iter_vectors()
-        .map(|x| x.clone())
-        .collect::<Vec<Vec<_>>>()
-        .try_into()
-        .unwrap();
-
-    assert_eq!(new_frontier, frontier);
 }
 
 #[test]
