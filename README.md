@@ -7,7 +7,6 @@
 [![Line count](https://tokei.rs/b1/github/zommiommy/parallel_frontier)](https://github.com/zommiommy/parallel_frontier)
 [![Latest version](https://img.shields.io/crates/v/parallel_frontier.svg)](https://crates.io/crates/parallel_frontier)
 [![Documentation](https://docs.rs/parallel_frontier/badge.svg)](https://docs.rs/parallel_frontier)
-[![Coverage Status](https://coveralls.io/repos/github/zommiommy/parallel_frontier/badge.svg?branch=main)](https://coveralls.io/github/zommiommy/parallel_frontier?branch=main)
 
 A queue-like frontier for breath-first visits on graphs that supports
 constant-time concurrent pushes and parallel iteration.

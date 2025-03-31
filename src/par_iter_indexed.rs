@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0 OR LGPL-2.1-or-later
  */
 
-use crate::prelude::*;
+use crate::*;
 use rayon::iter::{IndexedParallelIterator, plumbing::*};
 
 impl<T: Send + Sync> IndexedParallelIterator for FrontierParIter<'_, T> {

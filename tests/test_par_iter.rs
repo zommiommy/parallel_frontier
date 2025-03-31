@@ -6,7 +6,7 @@
  */
 
 extern crate parallel_frontier;
-use parallel_frontier::prelude::*;
+use parallel_frontier::*;
 use rayon::{ThreadPoolBuilder, iter::plumbing::UnindexedProducer, prelude::*};
 
 #[test]
