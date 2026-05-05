@@ -136,8 +136,8 @@ impl<T> core::iter::DoubleEndedIterator for FrontierIter<'_, T> {
             self.value_idx_end = self.father.as_ref()[self.vec_idx_end].len();
         }
 
-        let result = &self.father.as_ref()[self.vec_idx_end][self.value_idx_end];
         self.value_idx_end -= 1;
+        let result = &self.father.as_ref()[self.vec_idx_end][self.value_idx_end];
         Some(result)
     }
 }
