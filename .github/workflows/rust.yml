@@ -20,3 +20,23 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+
+  miri:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install nightly with miri
+      run: |
+        rustup toolchain install nightly --component miri
+        rustup override set nightly
+        cargo miri setup
+    - name: Run miri
+      # Tree Borrows is required because `crossbeam-epoch` (a transitive
+      # rayon dependency) is known to violate Stacked Borrows. Permissive
+      # provenance is required for the same reason. Leaks are ignored
+      # because rayon's worker threads outlive `main`.
+      env:
+        MIRIFLAGS: "-Zmiri-tree-borrows -Zmiri-permissive-provenance -Zmiri-ignore-leaks"
+      run: cargo miri test
