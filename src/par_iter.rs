@@ -6,7 +6,7 @@
  */
 
 use crate::*;
-use rayon::iter::{ParallelIterator, plumbing::bridge_unindexed};
+use rayon::iter::{plumbing::bridge_unindexed, ParallelIterator};
 
 pub struct FrontierParIter<'a, T> {
     pub(crate) father: &'a Frontier<'a, T>,

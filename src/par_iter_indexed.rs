@@ -6,7 +6,7 @@
  */
 
 use crate::*;
-use rayon::iter::{IndexedParallelIterator, plumbing::*};
+use rayon::iter::{plumbing::*, IndexedParallelIterator};
 
 impl<T: Send + Sync> IndexedParallelIterator for FrontierParIter<'_, T> {
     fn drive<C>(self, consumer: C) -> C::Result

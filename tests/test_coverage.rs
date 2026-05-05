@@ -297,7 +297,10 @@ fn unindexed_split_below_threshold_returns_none() {
 
     let f: Frontier<usize> = Frontier::from(vec![42]);
     let (this, other) = UnindexedProducer::split(FrontierProducer::new(&f));
-    assert_eq!(Producer::into_iter(this).copied().collect::<Vec<_>>(), vec![42]);
+    assert_eq!(
+        Producer::into_iter(this).copied().collect::<Vec<_>>(),
+        vec![42]
+    );
     assert!(other.is_none());
 }
 
@@ -439,7 +442,6 @@ fn into_par_iter_vectors_consumes() {
     let total: usize = f.into_par_iter_vectors().map(|v| v.len()).sum();
     assert_eq!(total, n);
 }
-
 
 // next_back when the iterator was already exhausted from the front (forces
 // the second early-return branch in next_back).
