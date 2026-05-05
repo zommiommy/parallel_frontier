@@ -142,7 +142,7 @@ impl<T> core::iter::DoubleEndedIterator for FrontierIter<'_, T> {
     }
 }
 
-impl<'a, T: Sync> UnindexedProducer for FrontierIter<'a, T> {
+impl<'a, T: Send + Sync> UnindexedProducer for FrontierIter<'a, T> {
     type Item = &'a T;
 
     /// Split the file in two approximately balanced streams
@@ -230,7 +230,7 @@ impl<'a, T: Sync> UnindexedProducer for FrontierIter<'a, T> {
     }
 }
 
-impl<'a, T: Sync> Producer for FrontierIter<'a, T> {
+impl<'a, T: Send + Sync> Producer for FrontierIter<'a, T> {
     type Item = &'a T;
     type IntoIter = Self;
 
