@@ -13,8 +13,8 @@ use rayon::{prelude::*, ThreadPool};
 /// different threads (each writing to its own shard) are sound.
 ///
 /// `repr(transparent)` is required so that `&[Shard<T>]` and `&[Vec<T>]` share
-/// the same memory layout: this is what lets [`Frontier::as_ref`] / [`as_mut`]
-/// hand out the existing `&[Vec<T>]` API without changing it.
+/// the same memory layout: this is what lets [`Frontier::as_ref`] /
+/// [`Frontier::as_mut`] hand out the existing `&[Vec<T>]` API without changing it.
 #[repr(transparent)]
 pub(crate) struct Shard<T>(UnsafeCell<Vec<T>>);
 

@@ -397,7 +397,7 @@ fn par_iter_indexed_drive_collects() {
     // with_producer, etc.) — collect drives the indexed path.
     let mut f: Frontier<usize> = Frontier::new();
     for (i, v) in f.as_mut().iter_mut().enumerate() {
-        v.extend(std::iter::repeat(i).take(3));
+        v.extend(std::iter::repeat_n(i, 3));
     }
     let v: Vec<usize> = f.par_iter().copied().collect();
     assert_eq!(v.len(), 3 * f.number_of_threads());

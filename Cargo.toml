@@ -1,6 +1,6 @@
 [package]
 name = "parallel_frontier"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "Queue-like frontier for breath-first visits on graphs that supports constant-time concurrent pushes and parallel iteration"
 repository = "https://github.com/zommiommy/parallel_frontier/"
