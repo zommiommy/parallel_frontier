@@ -7,7 +7,7 @@
 
 extern crate parallel_frontier;
 use parallel_frontier::*;
-use rayon::{ThreadPoolBuilder, iter::plumbing::UnindexedProducer, prelude::*};
+use rayon::{ThreadPoolBuilder, iter::plumbing::{Producer, UnindexedProducer}, prelude::*};
 
 #[test]
 fn test_par_iter() {
@@ -20,8 +20,9 @@ fn test_par_iter() {
 
     assert_eq!(vals, frontier.iter().copied().collect::<Vec<_>>());
 
-    let (low, high) = frontier.iter().split();
-    let high = high.unwrap();
+    let (low, high) = UnindexedProducer::split(FrontierProducer::new(&frontier));
+    let low = Producer::into_iter(low);
+    let high = Producer::into_iter(high.unwrap());
     assert_eq!(
         (low.size_hint(), high.size_hint()),
         ((5, Some(5)), (5, Some(5)))

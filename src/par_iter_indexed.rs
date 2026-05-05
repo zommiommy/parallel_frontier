@@ -25,6 +25,6 @@ impl<T: Send + Sync> IndexedParallelIterator for FrontierParIter<'_, T> {
         CB: ProducerCallback<Self::Item>,
     {
         // Drain every item, and then the vector only needs to free its buffer.
-        callback.callback(self.father.iter())
+        callback.callback(FrontierProducer::new(self.father))
     }
 }

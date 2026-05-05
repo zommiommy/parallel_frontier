@@ -171,7 +171,7 @@ fn concat_method_concatenates_shards() {
 #[test]
 fn clone_produces_equal_frontier() {
     let f: Frontier<usize> = Frontier::from(vec![5, 6, 7]);
-    let mut g = f.clone();
+    let g = f.clone();
     assert_eq!(f, g);
     // Mutating one does not affect the other.
     g.push(8);
@@ -187,7 +187,7 @@ fn debug_renders_struct_names() {
     let it = f.iter();
     let s = format!("{:?}", it);
     assert!(s.contains("FrontierIter"));
-    assert!(s.contains("cumulative_lens"));
+    assert!(s.contains("remaining"));
 }
 
 #[test]
@@ -291,14 +291,13 @@ fn iter_back_skips_empty_trailing_shards() {
 #[test]
 fn unindexed_split_below_threshold_returns_none() {
     let f: Frontier<usize> = Frontier::from(vec![]);
-    let it = f.iter();
-    let (this, other) = it.split();
+    let (this, other) = UnindexedProducer::split(FrontierProducer::new(&f));
     assert_eq!(this.len(), 0);
     assert!(other.is_none());
 
     let f: Frontier<usize> = Frontier::from(vec![42]);
-    let (this, other) = f.iter().split();
-    assert_eq!(this.copied().collect::<Vec<_>>(), vec![42]);
+    let (this, other) = UnindexedProducer::split(FrontierProducer::new(&f));
+    assert_eq!(Producer::into_iter(this).copied().collect::<Vec<_>>(), vec![42]);
     assert!(other.is_none());
 }
 
@@ -312,19 +311,21 @@ fn unindexed_split_at_shard_boundary() {
     }
     f.as_mut()[0].extend([1, 2]);
     f.as_mut()[1].extend([3, 4]);
-    let (low, high) = f.iter().split();
-    let high = high.unwrap();
+    let (low, high) = UnindexedProducer::split(FrontierProducer::new(&f));
+    let low = Producer::into_iter(low);
+    let high = Producer::into_iter(high.unwrap());
     assert_eq!(low.copied().collect::<Vec<_>>(), vec![1, 2]);
     assert_eq!(high.copied().collect::<Vec<_>>(), vec![3, 4]);
 }
 
 #[test]
 fn unindexed_split_inside_shard() {
-    // Single shard: split lands strictly inside, hitting the Err arm.
+    // Single shard: split lands strictly inside, hitting the Err arm of locate.
     let mut f: Frontier<usize> = Frontier::new();
     f.as_mut()[0].extend([1, 2, 3, 4]);
-    let (low, high) = f.iter().split();
-    let high = high.unwrap();
+    let (low, high) = UnindexedProducer::split(FrontierProducer::new(&f));
+    let low = Producer::into_iter(low);
+    let high = Producer::into_iter(high.unwrap());
     assert_eq!(low.copied().collect::<Vec<_>>(), vec![1, 2]);
     assert_eq!(high.copied().collect::<Vec<_>>(), vec![3, 4]);
 }
@@ -350,7 +351,9 @@ fn producer_split_at_boundary() {
     }
     f.as_mut()[0].extend([1, 2]);
     f.as_mut()[1].extend([3, 4]);
-    let (lo, hi) = Producer::split_at(f.iter(), 2);
+    let (lo, hi) = Producer::split_at(FrontierProducer::new(&f), 2);
+    let lo = Producer::into_iter(lo);
+    let hi = Producer::into_iter(hi);
     assert_eq!(lo.copied().collect::<Vec<_>>(), vec![1, 2]);
     assert_eq!(hi.copied().collect::<Vec<_>>(), vec![3, 4]);
 }
@@ -359,15 +362,17 @@ fn producer_split_at_boundary() {
 fn producer_split_at_inside_single_shard() {
     let mut f: Frontier<usize> = Frontier::new();
     f.as_mut()[0].extend([1, 2, 3, 4]);
-    let (lo, hi) = Producer::split_at(f.iter(), 1);
+    let (lo, hi) = Producer::split_at(FrontierProducer::new(&f), 1);
+    let lo = Producer::into_iter(lo);
+    let hi = Producer::into_iter(hi);
     assert_eq!(lo.copied().collect::<Vec<_>>(), vec![1]);
     assert_eq!(hi.copied().collect::<Vec<_>>(), vec![2, 3, 4]);
 }
 
 #[test]
-fn producer_into_iter_returns_self() {
+fn producer_into_iter_walks_full_range() {
     let f: Frontier<usize> = Frontier::from(vec![1, 2, 3]);
-    let it = Producer::into_iter(f.iter());
+    let it = Producer::into_iter(FrontierProducer::new(&f));
     assert_eq!(it.copied().collect::<Vec<_>>(), vec![1, 2, 3]);
 }
 
@@ -458,4 +463,22 @@ fn par_iter_indexed_drive_via_collect_into_vec() {
     let mut out: Vec<&usize> = Vec::new();
     IndexedParallelIterator::collect_into_vec(f.par_iter(), &mut out);
     assert_eq!(out.len(), 3 * f.number_of_threads());
+}
+
+#[test]
+fn frontier_producer_debug_renders_fields() {
+    let f: Frontier<usize> = Frontier::from(vec![1, 2]);
+    let s = format!("{:?}", FrontierProducer::new(&f));
+    assert!(s.contains("FrontierProducer"));
+    assert!(s.contains("start"));
+    assert!(s.contains("end"));
+    assert!(s.contains("cumulative_lens"));
+}
+
+#[test]
+fn frontier_producer_is_empty_tracks_range() {
+    let f: Frontier<usize> = Frontier::new();
+    assert!(FrontierProducer::new(&f).is_empty());
+    let f: Frontier<usize> = Frontier::from(vec![1]);
+    assert!(!FrontierProducer::new(&f).is_empty());
 }

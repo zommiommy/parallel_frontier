@@ -25,7 +25,7 @@ impl<'a, T: Send + Sync> ParallelIterator for FrontierParIter<'a, T> {
     where
         C: rayon::iter::plumbing::UnindexedConsumer<Self::Item>,
     {
-        bridge_unindexed(FrontierIter::new(self.father), consumer)
+        bridge_unindexed(FrontierProducer::new(self.father), consumer)
     }
 
     fn opt_len(&self) -> Option<usize> {
