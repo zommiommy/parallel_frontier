@@ -1,5 +1,21 @@
 # Change Log
 
+## [0.3.1] - 2026-05-06
+
+### Improved
+
+- `Frontier::extend` no longer round-robins. Every value lands in shard
+  0, in iterator order. The previous round-robin layout cost up to one
+  heap allocation per shard for tiny inputs (e.g. `extend([root])`
+  during a per-component BFS), which dominated `Frontier::new` +
+  `extend` overhead — see commit message for the measured impact.
+  Round-robin bought nothing observable: every consumer
+  (`Frontier::par_iter`, the `Producer` impls) re-splits the conceptual
+  flattened sequence regardless of the per-shard layout, so the result
+  is invisible to readers. Funneling everything through shard 0 is
+  faster, more cache-local, and bounds initialization to at most one
+  allocation.
+
 ## [0.3.0] - 2026-05-06
 
 ### New
