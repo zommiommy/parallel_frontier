@@ -454,36 +454,33 @@ impl<'a, T: Clone> From<Frontier<'a, T>> for Vec<T> {
 }
 
 impl<T> Extend<T> for Frontier<'_, T> {
-    /// Distribute `iter` across the shards in round-robin order, appending
-    /// to whatever each shard already holds.
+    /// Append every element of `iter` to the first shard.
     ///
     /// `&mut self` makes this safe in the presence of [`Shard`]'s interior
     /// mutability: while the call is in progress no other thread can hold
     /// a `&Frontier` and therefore cannot reach a `&Shard` either.
+    ///
+    /// # Implementation Notes
+    ///
+    /// Earlier versions distributed values round-robin across all shards.
+    /// That bought nothing in practice: every consumer of the frontier
+    /// (e.g. [`Frontier::par_iter`]) walks the conceptual flattened
+    /// sequence and re-splits the work itself, so the upfront layout is
+    /// invisible by the time anyone reads the data. Round-robin also
+    /// forced one heap allocation per shard for tiny inputs (e.g. a
+    /// single root in a BFS), turning every `extend` into an O(n_threads)
+    /// allocator hit. Funneling everything through shard 0 keeps the
+    /// elements contiguous (better cache locality for the subsequent
+    /// par_iter) and limits initialization to at most one allocation.
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
-        let n = self.data.len();
-        debug_assert!(n > 0, "frontier always has at least one shard");
-        let mut iter = iter.into_iter();
-        let (lower, _) = iter.size_hint();
-        if lower > 0 {
-            // Reserve a roughly balanced amount per shard so the round-robin
-            // push loop avoids repeated reallocations on every shard.
-            let per_shard = lower / n + usize::from(lower % n != 0);
-            for shard in &mut self.data {
-                shard.reserve(per_shard);
-            }
-        }
-        // Rotate over `&mut self.data` rather than indexing with a counter.
-        // The inner loop walks every shard exactly once, the outer loop
-        // restarts it for the next round-robin pass, and the iterator
-        // exhaustion path is a single `break 'outer`.
-        'outer: loop {
-            for shard in &mut self.data {
-                match iter.next() {
-                    Some(value) => shard.push(value),
-                    None => break 'outer,
-                }
-            }
-        }
+        debug_assert!(
+            !self.data.is_empty(),
+            "frontier always has at least one shard"
+        );
+        // Safety: we do not hold any reference into `self.data` across the
+        // call to `Vec::extend`; the borrow lives only for the duration of
+        // the next statement.
+        let shard0 = unsafe { &mut *self.data[0].as_ptr() };
+        shard0.extend(iter);
     }
 }

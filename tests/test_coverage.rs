@@ -234,23 +234,21 @@ fn test_as_mut_yields_mutable_shard_slice() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_extend_round_robins_values_across_shards() -> anyhow::Result<()> {
+fn test_extend_funnels_values_into_first_shard() -> anyhow::Result<()> {
     let mut f: Frontier<usize> = Frontier::new();
     let n = f.number_of_threads();
-    // Use a length that is a clean multiple of `n` so every shard gets the
-    // same count regardless of the system thread count.
     let total = n * 4;
     f.extend(0..total);
     assert_eq!(f.len(), total);
     let sizes = f.vector_sizes();
-    for size in &sizes {
-        assert_eq!(*size, 4);
+    // All values are pushed to shard 0; the rest stay empty.
+    assert_eq!(sizes[0], total);
+    for size in &sizes[1..] {
+        assert_eq!(*size, 0);
     }
-    // Round-robin: shard `i` receives values `i, i+n, i+2n, ...`.
-    for (shard_idx, shard) in f.iter_vectors().enumerate() {
-        let expected: Vec<usize> = (0..4).map(|k| shard_idx + k * n).collect();
-        assert_eq!(shard, &expected);
-    }
+    let collected: Vec<usize> = f.iter().copied().collect();
+    let expected: Vec<usize> = (0..total).collect();
+    assert_eq!(collected, expected);
     Ok(())
 }
 
@@ -258,12 +256,17 @@ fn test_extend_round_robins_values_across_shards() -> anyhow::Result<()> {
 fn test_extend_appends_to_existing_contents() -> anyhow::Result<()> {
     let mut f: Frontier<usize> = Frontier::new();
     let n = f.number_of_threads();
-    f.extend(0..n); // one element per shard
-    f.extend(n..2 * n); // another element per shard
+    f.extend(0..n);
+    f.extend(n..2 * n);
     assert_eq!(f.len(), 2 * n);
-    for (shard_idx, shard) in f.iter_vectors().enumerate() {
-        assert_eq!(shard, &vec![shard_idx, shard_idx + n]);
+    let sizes = f.vector_sizes();
+    assert_eq!(sizes[0], 2 * n);
+    for size in &sizes[1..] {
+        assert_eq!(*size, 0);
     }
+    let collected: Vec<usize> = f.iter().copied().collect();
+    let expected: Vec<usize> = (0..2 * n).collect();
+    assert_eq!(collected, expected);
     Ok(())
 }
 
