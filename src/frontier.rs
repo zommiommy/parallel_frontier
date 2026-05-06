@@ -27,15 +27,17 @@ use rayon::{prelude::*, ThreadPool};
 #[repr(align(64))]
 pub struct Shard<T>(UnsafeCell<Vec<T>>);
 
-// `UnsafeCell<Vec<T>>` is not `Sync`. Sharing a `Frontier<T>` between threads
-// only sends `&Shard<T>` references that are each used to mutate a *distinct*
-// shard, so the only data that ever crosses thread boundaries is `T` itself.
-// That is sound exactly when `T: Send`.
-unsafe impl<T: Send> Sync for Shard<T> {}
+impl<T: Clone> Clone for Shard<T> {
+    fn clone(&self) -> Self {
+        // Safety: cloning takes `&self`; the API contract requires no
+        // concurrent mutation while a `&Frontier` is observed.
+        Self::from_vec((**self).clone())
+    }
+}
 
 impl<T> Shard<T> {
     #[inline]
-    fn new() -> Self {
+    const fn new() -> Self {
         Self(UnsafeCell::new(Vec::new()))
     }
 
@@ -50,7 +52,7 @@ impl<T> Shard<T> {
     }
 
     #[inline]
-    pub(crate) fn as_ptr(&self) -> *mut Vec<T> {
+    pub(crate) const fn as_ptr(&self) -> *mut Vec<T> {
         self.0.get()
     }
 
@@ -59,6 +61,12 @@ impl<T> Shard<T> {
         self.0.into_inner()
     }
 }
+
+// `UnsafeCell<Vec<T>>` is not `Sync`. Sharing a `Frontier<T>` between threads
+// only sends `&Shard<T>` references that are each used to mutate a *distinct*
+// shard, so the only data that ever crosses thread boundaries is `T` itself.
+// That is sound exactly when `T: Send`.
+unsafe impl<T: Send> Sync for Shard<T> {}
 
 impl<T> Deref for Shard<T> {
     type Target = Vec<T>;
@@ -89,14 +97,6 @@ impl<T: core::fmt::Debug> core::fmt::Debug for Shard<T> {
     }
 }
 
-impl<T: Clone> Clone for Shard<T> {
-    fn clone(&self) -> Self {
-        // Safety: cloning takes `&self`; the API contract requires no
-        // concurrent mutation while a `&Frontier` is observed.
-        Self::from_vec((**self).clone())
-    }
-}
-
 /// A queue-like frontier for breath-first visits on graphs that supports
 /// constant-time concurrent pushes and parallel iteration.
 ///
@@ -104,8 +104,8 @@ impl<T: Clone> Clone for Shard<T> {
 /// the second case, the constructor will use Rayon's global [`ThreadPool`].
 ///
 /// If you need (as it is usually the case) to initialize the parallel frontier,
-/// after construction you can use [`AsMut`] to access the shards assigned to
-/// each thread and initialize them.
+/// after construction you can use [`Extend`] to distribute values across the
+/// shards, or [`AsMut`] to access individual shards directly.
 ///
 /// Threads from the [`ThreadPool`] can [push](Frontier::push) elements to the
 /// parallel frontier without synchronization. When all threads have completed
@@ -114,15 +114,6 @@ impl<T: Clone> Clone for Shard<T> {
 pub struct Frontier<'a, T> {
     data: Vec<Shard<T>>,
     threads: Option<&'a ThreadPool>,
-}
-
-impl<T: core::fmt::Debug> core::fmt::Debug for Frontier<'_, T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Frontier")
-            .field("data", &self.as_ref())
-            .field("threads", &self.threads.is_some())
-            .finish()
-    }
 }
 
 impl<T: Clone> Clone for Frontier<'_, T> {
@@ -134,95 +125,9 @@ impl<T: Clone> Clone for Frontier<'_, T> {
     }
 }
 
-impl<T> AsRef<[Shard<T>]> for Frontier<'_, T> {
-    #[inline]
-    fn as_ref(&self) -> &[Shard<T>] {
-        &self.data
-    }
-}
-
-impl<T> AsMut<[Shard<T>]> for Frontier<'_, T> {
-    #[inline]
-    fn as_mut(&mut self) -> &mut [Shard<T>] {
-        &mut self.data
-    }
-}
-
-impl<T> PartialEq for Frontier<'_, T>
-where
-    T: PartialEq,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.len() == other.len() && self.iter().zip(other.iter()).all(|(a, b)| a.eq(b))
-    }
-}
-
-impl<T> From<Vec<T>> for Frontier<'_, T> {
-    /// Create a frontier from the provided vector of elements.
-    fn from(value: Vec<T>) -> Self {
-        let mut frontier = Frontier::default();
-        frontier.data[0] = Shard::from_vec(value);
-        frontier
-    }
-}
-
-impl<'a, T> From<Frontier<'a, T>> for Vec<Vec<T>> {
-    fn from(val: Frontier<'a, T>) -> Self {
-        val.data.into_iter().map(Shard::into_inner).collect()
-    }
-}
-
-impl<'a, T> From<Frontier<'a, T>> for Vec<T>
-where
-    T: Clone,
-{
-    fn from(val: Frontier<'a, T>) -> Self {
-        val.concat()
-    }
-}
-
-impl<T> Extend<T> for Frontier<'_, T> {
-    /// Distribute `iter` across the shards in round-robin order, appending
-    /// to whatever each shard already holds.
-    ///
-    /// `&mut self` makes this safe in the presence of [`Shard`]'s interior
-    /// mutability: while the call is in progress no other thread can hold
-    /// a `&Frontier` and therefore cannot reach a `&Shard` either.
-    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
-        let n = self.data.len();
-        debug_assert!(n > 0, "frontier always has at least one shard");
-        let iter = iter.into_iter();
-        let (lower, _) = iter.size_hint();
-        if lower > 0 {
-            // Reserve a roughly balanced amount per shard so the round-robin
-            // push loop avoids repeated reallocations on every shard.
-            let per_shard = lower / n + usize::from(lower % n != 0);
-            for shard in &mut self.data {
-                shard.reserve(per_shard);
-            }
-        }
-        let mut idx = 0;
-        for value in iter {
-            self.data[idx].push(value);
-            idx += 1;
-            if idx == n {
-                idx = 0;
-            }
-        }
-    }
-}
-
-impl<T> core::default::Default for Frontier<'_, T> {
-    /// Creates a default parallel frontier with
-    /// [`Frontier::system_number_of_threads`] empty shards.
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<T: Clone> Frontier<'_, T> {
-    #[inline]
     /// Returns the concatenation of the shards.
+    #[inline]
     pub fn concat(&self) -> Vec<T> {
         let mut out = Vec::with_capacity(self.len());
         for shard in self.as_ref() {
@@ -233,9 +138,9 @@ impl<T: Clone> Frontier<'_, T> {
 }
 
 impl<'a, T> Frontier<'a, T> {
-    #[inline]
     /// Create a new parallel frontier with
     /// [`Frontier::system_number_of_threads`] empty shards.
+    #[inline]
     pub fn new() -> Self {
         let n_threads = Frontier::<T>::system_number_of_threads();
         Frontier {
@@ -243,15 +148,16 @@ impl<'a, T> Frontier<'a, T> {
             threads: None,
         }
     }
-    #[inline]
+
     /// Creates a new parallel frontier with
     /// [`Frontier::system_number_of_threads`] empty shards and given overall
     /// capacity.
     ///
-    /// # Implementation details
+    /// # Implementation Notes
     ///
     /// The provided capacity is distributed roughly uniformly across the
     /// shards.
+    #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         let n_threads = Frontier::<T>::system_number_of_threads();
         Frontier {
@@ -262,9 +168,9 @@ impl<'a, T> Frontier<'a, T> {
         }
     }
 
-    #[inline]
     /// Creates a new parallel frontier for the specified [`ThreadPool`] and
     /// given overall capacity.
+    #[inline]
     pub fn with_threads(thread_pool: &'a ThreadPool, capacity: Option<usize>) -> Self {
         let n_threads = thread_pool.current_num_threads();
         Frontier {
@@ -298,177 +204,251 @@ impl<'a, T> Frontier<'a, T> {
         }
     }
 
-    #[inline]
     /// Pushes an element to the frontier on a given thread id.
     ///
-    /// This method is unsafe because you might push values on the queue of
-    /// another thread.
+    /// # Implementation Notes
     ///
-    /// # Implementation details  
-    ///
-    /// A parallel frontier handles a synchronization free *unordered* vector by
-    /// assigning a sub-vector to exactly each thread and letting each thread
-    /// handle the push to their subvector. When the `push` method is called
-    /// outside of a Rayon thread pool we simply push objects to the first
-    /// element in the pool. This is useful when initializing the queue, albeit
-    /// we rather suggest to use [`AsMut`] and write directly in the relevant
-    /// shards.
-    ///
-    /// # Arguments
-    ///
-    /// * `element`: T - Element to be pushed onto of the frontier.
+    /// A parallel frontier handles a synchronization-free *unordered* vector
+    /// by assigning a sub-vector to exactly each thread and letting each
+    /// thread handle the push to its subvector. When the [`Frontier::push`]
+    /// method is called outside of a Rayon thread pool we simply push objects
+    /// to the first element in the pool. This is useful when initializing the
+    /// queue, although [`Extend`] is the recommended path.
     ///
     /// # Safety
     ///
-    /// This method is inherently unsafe because it's the responsibility of the
-    /// caller to ensure that the thread id is valid and that the corresponding
-    /// thread is not currently using the frontier.
+    /// This method is inherently unsafe because it is the responsibility of
+    /// the caller to ensure that the thread id is valid and that the
+    /// corresponding thread is not currently using the frontier.
+    #[inline]
     pub unsafe fn push_on_thread(&self, element: T, thread_id: usize) {
         // Safety: `Shard`'s `UnsafeCell` provides interior mutability, and the
         // caller guarantees no concurrent access to this shard.
         unsafe { (*self.data[thread_id].as_ptr()).push(element) };
     }
 
-    #[inline]
     /// Pushes an element to the parallel frontier.
     ///
-    /// # Implementation details
+    /// # Implementation Notes
     ///
-    /// A parallel frontier handles a synchronization free *unordered* vector by
-    /// assigning a shard to exactly each thread and letting each thread handle
-    /// the push to their shard. When the `push` method is called outside of a
-    /// Rayon thread pool we simply push objects to the first element in the
-    /// pool.
-    ///
-    /// # Arguments
-    ///
-    /// * `element`: T - Object to be pushed onto of the frontier.
+    /// A parallel frontier handles a synchronization-free *unordered* vector
+    /// by assigning a shard to exactly each thread and letting each thread
+    /// handle the push to its shard. When the `push` method is called
+    /// outside of a Rayon thread pool we simply push objects to the first
+    /// element in the pool.
+    #[inline]
     pub fn push(&self, element: T) {
         unsafe {
             self.push_on_thread(element, self.get_current_thread_index());
         };
     }
 
+    /// Pops an element from the frontier.
+    ///
+    /// # Implementation Notes
+    ///
+    /// A parallel frontier handles a synchronization-free *unordered* vector
+    /// by assigning a shard to exactly each thread and letting each thread
+    /// handle the pop from its shard. When the `pop` method is called
+    /// outside of a Rayon thread pool we simply pop objects from the first
+    /// element in the pool.
     #[inline]
-    /// Pops an element from frontier.
-    ///
-    /// # Implementation details
-    ///
-    /// A parallel frontier handles a synchronization free *unordered* vector by
-    /// assigning a shard to exactly each thread and letting each thread handle
-    /// the pop from their shard. When the `pop` method is called outside of a
-    /// Rayon thread pool we simply pop objects from the first element in the
-    /// pool.
     pub fn pop(&self) -> Option<T> {
         unsafe { self.pop_from_thread(self.get_current_thread_index()) }
     }
 
-    #[inline]
-    /// Pop element from frontier.
+    /// Pops an element from the frontier on a given thread id.
     ///
-    /// # Implementation details  
+    /// # Implementation Notes
     ///
-    /// A parallel frontier handles a synchronization free *unordered* vector
+    /// A parallel frontier handles a synchronization-free *unordered* vector
     /// by assigning a sub-vector to exactly each thread and letting each
-    /// thread handle the pop from their subvector.
-    /// When the `pop` method is called outside of a Rayon thread pool
-    /// we simply pop objects from the first element in the pool.
+    /// thread handle the pop from its subvector. When the `pop` method is
+    /// called outside of a Rayon thread pool we simply pop objects from the
+    /// first element in the pool.
     ///
     /// # Safety
     ///
-    /// This method is inherently unsafe because it's the responsibility of
-    /// the caller to ensure that the thread_id is valid and that the
+    /// This method is inherently unsafe because it is the responsibility of
+    /// the caller to ensure that the thread id is valid and that the
     /// corresponding thread is not currently using the frontier.
+    #[inline]
     pub unsafe fn pop_from_thread(&self, thread_id: usize) -> Option<T> {
         // Safety: see `push_on_thread`.
         unsafe { (*self.data[thread_id].as_ptr()).pop() }
     }
 
-    #[inline]
     /// Returns the number of the threads, that is, shards, in the parallel
     /// frontier.
+    #[inline]
     pub fn number_of_threads(&self) -> usize {
         self.data.len()
     }
 
-    #[inline]
     /// Returns the system number of the threads, that is, shards, in
     /// parallel frontiers without a user [`ThreadPool`].
+    #[inline]
     pub fn system_number_of_threads() -> usize {
         rayon::current_num_threads().max(1)
     }
 
-    #[inline]
     /// Returns the total length of the frontier, that is, the total number of
     /// elements in all shards.
+    #[inline]
     pub fn len(&self) -> usize {
         self.as_ref().iter().map(|s| s.len()).sum()
     }
 
+    /// Returns whether the frontier is empty.
     #[inline]
-    /// Returns whether frontier is empty.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// Clears all shards, retaining each shard's allocated capacity.
     #[inline]
-    /// Clears all shards, maintaining the reached vector capacity.
     pub fn clear(&mut self) {
         self.data.iter_mut().for_each(|s| s.clear());
     }
 
+    /// Shrinks every shard to fit its current length.
     #[inline]
-    /// Shrinks to fit all shards.
     pub fn shrink_to_fit(&mut self) {
         self.data.iter_mut().for_each(|s| s.shrink_to_fit());
     }
 
-    #[inline]
     /// Returns a sequential iterator on the elements of the parallel frontier.
+    #[inline]
     pub fn iter(&self) -> FrontierIter<'_, T> {
         FrontierIter::new(self)
     }
 
-    #[inline]
     /// Iterates on the shards sequentially.
+    #[inline]
     pub fn iter_vectors(&self) -> impl Iterator<Item = &Vec<T>> + '_ {
         self.as_ref().iter().map(|s| &**s)
     }
 
-    #[inline]
     /// Returns the sizes of shards.
+    #[inline]
     pub fn vector_sizes(&self) -> Vec<usize> {
         self.as_ref().iter().map(|s| s.len()).collect::<Vec<_>>()
     }
 
-    #[inline]
     /// Returns a parallel iterator on the elements of the parallel frontier.
+    #[inline]
     pub fn par_iter(&self) -> FrontierParIter<'_, T> {
         FrontierParIter::new(self)
     }
 }
 
-impl<T> Frontier<'_, T>
-where
-    T: Send + Sync,
-{
+impl<T: Send + Sync> Frontier<'_, T> {
+    /// Returns a parallel iterator on references to the shards.
     #[inline]
-    /// Returns an parallel iterator on references to the shards.
     pub fn par_iter_vectors(&self) -> impl IndexedParallelIterator<Item = &Vec<T>> + '_ {
         self.as_ref().par_iter().map(|s| &**s)
     }
 
-    #[inline]
     /// Returns a parallel iterator on mutable references to the shards.
+    #[inline]
     pub fn par_iter_vectors_mut(
         &mut self,
     ) -> impl IndexedParallelIterator<Item = &mut Vec<T>> + '_ {
         self.as_mut().par_iter_mut().map(|s| &mut **s)
     }
 
-    #[inline]
     /// Consumes self, returning a parallel iterator on the shards.
+    #[inline]
     pub fn into_par_iter_vectors(self) -> impl IndexedParallelIterator<Item = Vec<T>> {
         self.data.into_par_iter().map(Shard::into_inner)
+    }
+}
+
+impl<T: core::fmt::Debug> core::fmt::Debug for Frontier<'_, T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Frontier")
+            .field("data", &self.as_ref())
+            .field("threads", &self.threads.is_some())
+            .finish()
+    }
+}
+
+impl<T> AsRef<[Shard<T>]> for Frontier<'_, T> {
+    #[inline]
+    fn as_ref(&self) -> &[Shard<T>] {
+        &self.data
+    }
+}
+
+impl<T> AsMut<[Shard<T>]> for Frontier<'_, T> {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [Shard<T>] {
+        &mut self.data
+    }
+}
+
+impl<T: PartialEq> PartialEq for Frontier<'_, T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.len() == other.len() && self.iter().zip(other.iter()).all(|(a, b)| a.eq(b))
+    }
+}
+
+impl<T> core::default::Default for Frontier<'_, T> {
+    /// Creates a default parallel frontier with
+    /// [`Frontier::system_number_of_threads`] empty shards.
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> From<Vec<T>> for Frontier<'_, T> {
+    /// Create a frontier from the provided vector of elements.
+    fn from(value: Vec<T>) -> Self {
+        let mut frontier = Frontier::default();
+        frontier.data[0] = Shard::from_vec(value);
+        frontier
+    }
+}
+
+impl<'a, T> From<Frontier<'a, T>> for Vec<Vec<T>> {
+    fn from(val: Frontier<'a, T>) -> Self {
+        val.data.into_iter().map(Shard::into_inner).collect()
+    }
+}
+
+impl<'a, T: Clone> From<Frontier<'a, T>> for Vec<T> {
+    fn from(val: Frontier<'a, T>) -> Self {
+        val.concat()
+    }
+}
+
+impl<T> Extend<T> for Frontier<'_, T> {
+    /// Distribute `iter` across the shards in round-robin order, appending
+    /// to whatever each shard already holds.
+    ///
+    /// `&mut self` makes this safe in the presence of [`Shard`]'s interior
+    /// mutability: while the call is in progress no other thread can hold
+    /// a `&Frontier` and therefore cannot reach a `&Shard` either.
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        let n = self.data.len();
+        debug_assert!(n > 0, "frontier always has at least one shard");
+        let iter = iter.into_iter();
+        let (lower, _) = iter.size_hint();
+        if lower > 0 {
+            // Reserve a roughly balanced amount per shard so the round-robin
+            // push loop avoids repeated reallocations on every shard.
+            let per_shard = lower / n + usize::from(lower % n != 0);
+            for shard in &mut self.data {
+                shard.reserve(per_shard);
+            }
+        }
+        let mut idx = 0;
+        for value in iter {
+            self.data[idx].push(value);
+            idx += 1;
+            if idx == n {
+                idx = 0;
+            }
+        }
     }
 }

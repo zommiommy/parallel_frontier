@@ -28,18 +28,6 @@ pub struct FrontierIter<'a, T> {
     remaining: usize,
 }
 
-impl<T> core::fmt::Debug for FrontierIter<'_, T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("FrontierIter")
-            .field("vec_idx_start", &self.vec_idx_start)
-            .field("value_idx_start", &self.value_idx_start)
-            .field("vec_idx_end", &self.vec_idx_end)
-            .field("value_idx_end", &self.value_idx_end)
-            .field("remaining", &self.remaining)
-            .finish()
-    }
-}
-
 impl<'a, T> FrontierIter<'a, T> {
     pub fn new(father: &'a Frontier<T>) -> Self {
         let n_threads = father.number_of_threads();
@@ -63,7 +51,17 @@ impl<'a, T> FrontierIter<'a, T> {
     }
 }
 
-impl<T> core::iter::ExactSizeIterator for FrontierIter<'_, T> {}
+impl<T> core::fmt::Debug for FrontierIter<'_, T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("FrontierIter")
+            .field("vec_idx_start", &self.vec_idx_start)
+            .field("value_idx_start", &self.value_idx_start)
+            .field("vec_idx_end", &self.vec_idx_end)
+            .field("value_idx_end", &self.value_idx_end)
+            .field("remaining", &self.remaining)
+            .finish()
+    }
+}
 
 impl<'a, T> core::iter::Iterator for FrontierIter<'a, T> {
     type Item = &'a T;
@@ -112,6 +110,7 @@ impl<T> core::iter::DoubleEndedIterator for FrontierIter<'_, T> {
     }
 }
 
+impl<T> core::iter::ExactSizeIterator for FrontierIter<'_, T> {}
 /// Rayon `Producer` and `UnindexedProducer` over a [`Frontier`].
 ///
 /// Splits are pure range arithmetic on the half-open interval `[start, end)`
@@ -122,16 +121,6 @@ pub struct FrontierProducer<'a, T> {
     cumulative_lens: Arc<Vec<usize>>,
     start: usize,
     end: usize,
-}
-
-impl<T> core::fmt::Debug for FrontierProducer<'_, T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("FrontierProducer")
-            .field("start", &self.start)
-            .field("end", &self.end)
-            .field("cumulative_lens", &self.cumulative_lens)
-            .finish()
-    }
 }
 
 impl<'a, T> FrontierProducer<'a, T> {
@@ -176,6 +165,16 @@ fn locate(cumulative_lens: &[usize], idx: usize) -> (usize, usize) {
             let vec_idx = vec_idx - 1;
             (vec_idx, idx - cumulative_lens[vec_idx])
         }
+    }
+}
+
+impl<T> core::fmt::Debug for FrontierProducer<'_, T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("FrontierProducer")
+            .field("start", &self.start)
+            .field("end", &self.end)
+            .field("cumulative_lens", &self.cumulative_lens)
+            .finish()
     }
 }
 
@@ -240,10 +239,7 @@ impl<'a, T: Send + Sync> UnindexedProducer for FrontierProducer<'a, T> {
         )
     }
 
-    fn fold_with<F>(self, folder: F) -> F
-    where
-        F: Folder<Self::Item>,
-    {
+    fn fold_with<F: Folder<Self::Item>>(self, folder: F) -> F {
         folder.consume_iter(Producer::into_iter(self))
     }
 }

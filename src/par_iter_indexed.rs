@@ -9,10 +9,7 @@ use crate::*;
 use rayon::iter::{plumbing::*, IndexedParallelIterator};
 
 impl<T: Send + Sync> IndexedParallelIterator for FrontierParIter<'_, T> {
-    fn drive<C>(self, consumer: C) -> C::Result
-    where
-        C: Consumer<Self::Item>,
-    {
+    fn drive<C: Consumer<Self::Item>>(self, consumer: C) -> C::Result {
         bridge(self, consumer)
     }
 
@@ -20,10 +17,7 @@ impl<T: Send + Sync> IndexedParallelIterator for FrontierParIter<'_, T> {
         self.father.len()
     }
 
-    fn with_producer<CB>(self, callback: CB) -> CB::Output
-    where
-        CB: ProducerCallback<Self::Item>,
-    {
+    fn with_producer<CB: ProducerCallback<Self::Item>>(self, callback: CB) -> CB::Output {
         // Drain every item, and then the vector only needs to free its buffer.
         callback.callback(FrontierProducer::new(self.father))
     }

@@ -21,10 +21,10 @@ impl<'a, T> FrontierParIter<'a, T> {
 impl<'a, T: Send + Sync> ParallelIterator for FrontierParIter<'a, T> {
     type Item = &'a T;
 
-    fn drive_unindexed<C>(self, consumer: C) -> C::Result
-    where
-        C: rayon::iter::plumbing::UnindexedConsumer<Self::Item>,
-    {
+    fn drive_unindexed<C: rayon::iter::plumbing::UnindexedConsumer<Self::Item>>(
+        self,
+        consumer: C,
+    ) -> C::Result {
         bridge_unindexed(FrontierProducer::new(self.father), consumer)
     }
 
