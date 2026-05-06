@@ -15,3 +15,6 @@ authors = [
 
 [dependencies]
 rayon = "1.10.0"
+
+[dev-dependencies]
+anyhow = "1.0"

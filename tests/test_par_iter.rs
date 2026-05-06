@@ -14,7 +14,7 @@ use rayon::{
 };
 
 #[test]
-fn test_par_iter() {
+fn test_par_iter() -> anyhow::Result<()> {
     let frontier = Frontier::new();
     let vals: Vec<usize> = (0..10).collect::<Vec<_>>();
 
@@ -22,7 +22,7 @@ fn test_par_iter() {
         frontier.push(*i);
     }
 
-    assert_eq!(vals, frontier.iter().copied().collect::<Vec<_>>());
+    assert_eq!(frontier.iter().copied().collect::<Vec<_>>(), vals,);
 
     let (low, high) = UnindexedProducer::split(FrontierProducer::new(&frontier));
     let low = Producer::into_iter(low);
@@ -33,14 +33,15 @@ fn test_par_iter() {
     );
     assert_eq!((low.count(), high.count()), (5, 5));
     assert_eq!(
+        frontier.par_iter().copied().sum::<usize>(),
         vals.iter().copied().sum::<usize>(),
-        frontier.par_iter().copied().sum()
     );
-    assert_eq!(vals, frontier.par_iter().copied().collect::<Vec<_>>());
+    assert_eq!(frontier.par_iter().copied().collect::<Vec<_>>(), vals,);
+    Ok(())
 }
 
 #[test]
-fn test_par_iter_with_par_push() {
+fn test_par_iter_with_par_push() -> anyhow::Result<()> {
     let frontier = Frontier::new();
 
     let m = 24;
@@ -53,12 +54,13 @@ fn test_par_iter_with_par_push() {
     });
 
     println!("{:?}", frontier.vector_sizes());
-    assert_eq!(m * n, frontier.par_iter().copied().count());
+    assert_eq!(frontier.par_iter().copied().count(), m * n);
+    Ok(())
 }
 
 #[test]
-fn test_par_iter_with_par_push_with_thread_pool() {
-    let pool = ThreadPoolBuilder::default().num_threads(3).build().unwrap();
+fn test_par_iter_with_par_push_with_thread_pool() -> anyhow::Result<()> {
+    let pool = ThreadPoolBuilder::default().num_threads(3).build()?;
     let frontier = Frontier::with_threads(&pool, None);
 
     let m = 24;
@@ -73,12 +75,13 @@ fn test_par_iter_with_par_push_with_thread_pool() {
     });
 
     println!("{:?}", frontier.vector_sizes());
-    assert_eq!(m * n, frontier.par_iter().copied().count());
-    assert_eq!(3, frontier.number_of_threads());
+    assert_eq!(frontier.par_iter().copied().count(), m * n);
+    assert_eq!(frontier.number_of_threads(), 3);
+    Ok(())
 }
 
 #[test]
-fn test_enumerate() {
+fn test_enumerate() -> anyhow::Result<()> {
     let frontier = Frontier::new();
 
     let m = 24;
@@ -91,5 +94,6 @@ fn test_enumerate() {
     });
 
     println!("{:?}", frontier.vector_sizes());
-    assert_eq!(m * n, frontier.par_iter().enumerate().count());
+    assert_eq!(frontier.par_iter().enumerate().count(), m * n);
+    Ok(())
 }
