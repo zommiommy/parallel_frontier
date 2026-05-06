@@ -302,7 +302,7 @@ impl<'a, T> Frontier<'a, T> {
     /// Returns whether the frontier is empty.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.as_ref().iter().all(|s| s.is_empty())
     }
 
     /// Clears all shards, retaining each shard's allocated capacity.
