@@ -181,6 +181,37 @@ where
     }
 }
 
+impl<T> Extend<T> for Frontier<'_, T> {
+    /// Distribute `iter` across the shards in round-robin order, appending
+    /// to whatever each shard already holds.
+    ///
+    /// `&mut self` makes this safe in the presence of [`Shard`]'s interior
+    /// mutability: while the call is in progress no other thread can hold
+    /// a `&Frontier` and therefore cannot reach a `&Shard` either.
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        let n = self.data.len();
+        debug_assert!(n > 0, "frontier always has at least one shard");
+        let iter = iter.into_iter();
+        let (lower, _) = iter.size_hint();
+        if lower > 0 {
+            // Reserve a roughly balanced amount per shard so the round-robin
+            // push loop avoids repeated reallocations on every shard.
+            let per_shard = lower / n + usize::from(lower % n != 0);
+            for shard in &mut self.data {
+                shard.reserve(per_shard);
+            }
+        }
+        let mut idx = 0;
+        for value in iter {
+            self.data[idx].push(value);
+            idx += 1;
+            if idx == n {
+                idx = 0;
+            }
+        }
+    }
+}
+
 impl<T> core::default::Default for Frontier<'_, T> {
     /// Creates a default parallel frontier with
     /// [`Frontier::system_number_of_threads`] empty shards.

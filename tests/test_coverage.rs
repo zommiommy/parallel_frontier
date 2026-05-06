@@ -484,3 +484,44 @@ fn frontier_producer_is_empty_tracks_range() {
     let f: Frontier<usize> = Frontier::from(vec![1]);
     assert!(!FrontierProducer::new(&f).is_empty());
 }
+
+#[test]
+fn extend_round_robins_values_across_shards() {
+    let mut f: Frontier<usize> = Frontier::new();
+    let n = f.number_of_threads();
+    // Use a length that is a clean multiple of `n` so every shard gets the
+    // same count regardless of the system thread count.
+    let total = n * 4;
+    f.extend(0..total);
+    assert_eq!(f.len(), total);
+    let sizes = f.vector_sizes();
+    for size in &sizes {
+        assert_eq!(*size, 4);
+    }
+    // Round-robin: shard `i` receives values `i, i+n, i+2n, ...`.
+    for (shard_idx, shard) in f.iter_vectors().enumerate() {
+        let expected: Vec<usize> = (0..4).map(|k| shard_idx + k * n).collect();
+        assert_eq!(shard, &expected);
+    }
+}
+
+#[test]
+fn extend_appends_to_existing_contents() {
+    let mut f: Frontier<usize> = Frontier::new();
+    let n = f.number_of_threads();
+    f.extend(0..n); // one element per shard
+    f.extend(n..2 * n); // another element per shard
+    assert_eq!(f.len(), 2 * n);
+    for (shard_idx, shard) in f.iter_vectors().enumerate() {
+        assert_eq!(shard, &vec![shard_idx, shard_idx + n]);
+    }
+}
+
+#[test]
+fn extend_handles_unknown_size_iterator() {
+    let mut f: Frontier<usize> = Frontier::new();
+    let n = f.number_of_threads();
+    // `filter` erases the size hint, so the reserve branch is skipped.
+    f.extend((0..n * 2).filter(|_| true));
+    assert_eq!(f.len(), n * 2);
+}
