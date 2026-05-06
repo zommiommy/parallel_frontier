@@ -66,6 +66,7 @@ impl<T> core::fmt::Debug for FrontierIter<'_, T> {
 impl<'a, T> core::iter::Iterator for FrontierIter<'a, T> {
     type Item = &'a T;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {
             return None;
@@ -83,16 +84,19 @@ impl<'a, T> core::iter::Iterator for FrontierIter<'a, T> {
         Some(result)
     }
 
+    #[inline]
     fn count(self) -> usize {
         self.remaining
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.remaining, Some(self.remaining))
     }
 }
 
 impl<T> core::iter::DoubleEndedIterator for FrontierIter<'_, T> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {
             return None;
