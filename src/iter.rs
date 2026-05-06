@@ -124,25 +124,23 @@ impl<T> core::iter::FusedIterator for FrontierIter<'_, T> {}
 /// `(shard, offset)` lookup happens once, lazily, in [`Producer::into_iter`].
 pub struct FrontierProducer<'a, T> {
     father: &'a Frontier<'a, T>,
-    cumulative_lens: Arc<Vec<usize>>,
+    cumulative_lens: Arc<[usize]>,
     start: usize,
     end: usize,
 }
 
 impl<'a, T> FrontierProducer<'a, T> {
     pub fn new(father: &'a Frontier<T>) -> Self {
-        let cumulative_lens = Arc::new(
-            father
-                .as_ref()
-                .iter()
-                .map(|s| s.len())
-                .scan(0, |acc, val| {
-                    let res = *acc;
-                    *acc += val;
-                    Some(res)
-                })
-                .collect::<Vec<_>>(),
-        );
+        let cumulative_lens: Arc<[usize]> = father
+            .as_ref()
+            .iter()
+            .map(|s| s.len())
+            .scan(0, |acc, val| {
+                let res = *acc;
+                *acc += val;
+                Some(res)
+            })
+            .collect();
         let end = father.len();
         FrontierProducer {
             father,
