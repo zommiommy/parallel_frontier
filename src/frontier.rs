@@ -233,9 +233,16 @@ impl<'a, T> Frontier<'a, T> {
     ///
     /// A parallel frontier handles a synchronization-free *unordered* vector
     /// by assigning a shard to exactly each thread and letting each thread
-    /// handle the push to its shard. When the `push` method is called
-    /// outside of a Rayon thread pool we simply push objects to the first
-    /// element in the pool.
+    /// handle the push to its shard.
+    ///
+    /// Each call performs a thread-local lookup to map the caller to its
+    /// shard. When `push` is called from outside a Rayon thread pool the
+    /// element is appended to shard 0; this is convenient for one-off
+    /// initialization but turns shard 0 into a serial bottleneck if used
+    /// for bulk loading from a non-Rayon thread. For batch initialization
+    /// prefer [`Extend`], and inside a tight Rayon loop prefer
+    /// [`push_on_thread`](Frontier::push_on_thread) with the thread index
+    /// captured once outside the loop.
     #[inline]
     pub fn push(&self, element: T) {
         unsafe {
