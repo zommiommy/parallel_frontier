@@ -79,7 +79,7 @@ impl<'a, T> core::iter::Iterator for FrontierIter<'a, T> {
             self.vec_idx_start += 1;
             self.value_idx_start = 0;
         }
-        let result = &shards[self.vec_idx_start][self.value_idx_start];
+        let result = &shards[self.vec_idx_start].as_slice()[self.value_idx_start];
         self.value_idx_start += 1;
         self.remaining -= 1;
         Some(result)
@@ -108,7 +108,7 @@ impl<T> core::iter::DoubleEndedIterator for FrontierIter<'_, T> {
         }
         self.value_idx_end -= 1;
         self.remaining -= 1;
-        Some(&shards[self.vec_idx_end][self.value_idx_end])
+        Some(&shards[self.vec_idx_end].as_slice()[self.value_idx_end])
     }
 }
 
@@ -140,7 +140,7 @@ impl<'a, T> FrontierProducer<'a, T> {
             father
                 .as_ref()
                 .iter()
-                .map(|v| v.len())
+                .map(|s| s.len())
                 .scan(0, |acc, val| {
                     let res = *acc;
                     *acc += val;

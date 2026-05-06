@@ -7,16 +7,25 @@
 
 use crate::*;
 use core::cell::UnsafeCell;
+use core::ops::{Deref, DerefMut};
 use rayon::{prelude::*, ThreadPool};
 
 /// Per-thread shard with interior mutability so that concurrent pushes from
 /// different threads (each writing to its own shard) are sound.
 ///
-/// `repr(transparent)` is required so that `&[Shard<T>]` and `&[Vec<T>]` share
-/// the same memory layout: this is what lets [`Frontier::as_ref`] /
-/// [`Frontier::as_mut`] hand out the existing `&[Vec<T>]` API without changing it.
-#[repr(transparent)]
-pub(crate) struct Shard<T>(UnsafeCell<Vec<T>>);
+/// The 64-byte alignment makes each shard occupy its own cache line, which
+/// prevents false sharing between the per-thread `Vec` headers when threads
+/// push concurrently.
+///
+/// # Soundness contract
+///
+/// `Shard<T>: Sync` when `T: Send` lets threads share `&Shard<T>` references.
+/// Reading the inner `Vec` through `&Shard<T>` (e.g. via [`Deref`]) is sound
+/// only while no other thread is mutating the shard through its
+/// [`UnsafeCell`]. The owning [`Frontier`] enforces this at the API level by
+/// requiring observation and mutation to be serialized by the caller.
+#[repr(align(64))]
+pub struct Shard<T>(UnsafeCell<Vec<T>>);
 
 // `UnsafeCell<Vec<T>>` is not `Sync`. Sharing a `Frontier<T>` between threads
 // only sends `&Shard<T>` references that are each used to mutate a *distinct*
@@ -41,29 +50,42 @@ impl<T> Shard<T> {
     }
 
     #[inline]
-    fn as_ptr(&self) -> *mut Vec<T> {
+    pub(crate) fn as_ptr(&self) -> *mut Vec<T> {
         self.0.get()
     }
 
     #[inline]
-    fn get_mut(&mut self) -> &mut Vec<T> {
-        self.0.get_mut()
-    }
-
-    #[inline]
-    fn into_inner(self) -> Vec<T> {
+    pub(crate) fn into_inner(self) -> Vec<T> {
         self.0.into_inner()
     }
+}
+
+impl<T> Deref for Shard<T> {
+    type Target = Vec<T>;
 
     /// Borrow the inner `Vec` immutably.
     ///
-    /// # Safety
-    ///
-    /// No other thread may be mutating this shard for the duration of the
-    /// returned borrow.
+    /// See the type-level soundness contract: callers must ensure no
+    /// concurrent mutation through other `&Shard<T>` borrows for the
+    /// duration of the returned reference.
     #[inline]
-    unsafe fn as_vec(&self) -> &Vec<T> {
+    fn deref(&self) -> &Vec<T> {
+        // Safety: contract documented on `Shard<T>`.
         unsafe { &*self.0.get() }
+    }
+}
+
+impl<T> DerefMut for Shard<T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Vec<T> {
+        self.0.get_mut()
+    }
+}
+
+impl<T: core::fmt::Debug> core::fmt::Debug for Shard<T> {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Debug::fmt(&**self, f)
     }
 }
 
@@ -71,7 +93,7 @@ impl<T: Clone> Clone for Shard<T> {
     fn clone(&self) -> Self {
         // Safety: cloning takes `&self`; the API contract requires no
         // concurrent mutation while a `&Frontier` is observed.
-        Self::from_vec(unsafe { self.as_vec() }.clone())
+        Self::from_vec((**self).clone())
     }
 }
 
@@ -112,24 +134,17 @@ impl<T: Clone> Clone for Frontier<'_, T> {
     }
 }
 
-impl<T> AsRef<[Vec<T>]> for Frontier<'_, T> {
-    fn as_ref(&self) -> &[Vec<T>] {
-        // Safety: `Shard<T>` is `repr(transparent)` over `UnsafeCell<Vec<T>>`,
-        // which is `repr(transparent)` over `Vec<T>`, so the slice layout is
-        // identical. Reborrowing as `&[Vec<T>]` is sound provided no other
-        // thread mutates a shard while this borrow is alive; that matches the
-        // existing API contract.
-        unsafe { core::slice::from_raw_parts(self.data.as_ptr() as *const Vec<T>, self.data.len()) }
+impl<T> AsRef<[Shard<T>]> for Frontier<'_, T> {
+    #[inline]
+    fn as_ref(&self) -> &[Shard<T>] {
+        &self.data
     }
 }
 
-impl<T> AsMut<[Vec<T>]> for Frontier<'_, T> {
-    fn as_mut(&mut self) -> &mut [Vec<T>] {
-        // Safety: same layout argument as `as_ref`. `&mut self` guarantees
-        // unique access to every shard.
-        unsafe {
-            core::slice::from_raw_parts_mut(self.data.as_mut_ptr() as *mut Vec<T>, self.data.len())
-        }
+impl<T> AsMut<[Shard<T>]> for Frontier<'_, T> {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [Shard<T>] {
+        &mut self.data
     }
 }
 
@@ -178,7 +193,11 @@ impl<T: Clone> Frontier<'_, T> {
     #[inline]
     /// Returns the concatenation of the shards.
     pub fn concat(&self) -> Vec<T> {
-        self.as_ref().concat()
+        let mut out = Vec::with_capacity(self.len());
+        for shard in self.as_ref() {
+            out.extend_from_slice(shard);
+        }
+        out
     }
 }
 
@@ -352,7 +371,7 @@ impl<'a, T> Frontier<'a, T> {
     /// Returns the total length of the frontier, that is, the total number of
     /// elements in all shards.
     pub fn len(&self) -> usize {
-        self.as_ref().iter().map(|v| v.len()).sum()
+        self.as_ref().iter().map(|s| s.len()).sum()
     }
 
     #[inline]
@@ -364,15 +383,13 @@ impl<'a, T> Frontier<'a, T> {
     #[inline]
     /// Clears all shards, maintaining the reached vector capacity.
     pub fn clear(&mut self) {
-        self.data.iter_mut().for_each(|v| v.get_mut().clear());
+        self.data.iter_mut().for_each(|s| s.clear());
     }
 
     #[inline]
     /// Shrinks to fit all shards.
     pub fn shrink_to_fit(&mut self) {
-        self.data
-            .iter_mut()
-            .for_each(|v| v.get_mut().shrink_to_fit());
+        self.data.iter_mut().for_each(|s| s.shrink_to_fit());
     }
 
     #[inline]
@@ -384,13 +401,13 @@ impl<'a, T> Frontier<'a, T> {
     #[inline]
     /// Iterates on the shards sequentially.
     pub fn iter_vectors(&self) -> impl Iterator<Item = &Vec<T>> + '_ {
-        self.as_ref().iter()
+        self.as_ref().iter().map(|s| &**s)
     }
 
     #[inline]
     /// Returns the sizes of shards.
     pub fn vector_sizes(&self) -> Vec<usize> {
-        self.as_ref().iter().map(|v| v.len()).collect::<Vec<_>>()
+        self.as_ref().iter().map(|s| s.len()).collect::<Vec<_>>()
     }
 
     #[inline]
@@ -407,7 +424,7 @@ where
     #[inline]
     /// Returns an parallel iterator on references to the shards.
     pub fn par_iter_vectors(&self) -> impl IndexedParallelIterator<Item = &Vec<T>> + '_ {
-        self.as_ref().par_iter()
+        self.as_ref().par_iter().map(|s| &**s)
     }
 
     #[inline]
@@ -415,7 +432,7 @@ where
     pub fn par_iter_vectors_mut(
         &mut self,
     ) -> impl IndexedParallelIterator<Item = &mut Vec<T>> + '_ {
-        self.as_mut().par_iter_mut()
+        self.as_mut().par_iter_mut().map(|s| &mut **s)
     }
 
     #[inline]

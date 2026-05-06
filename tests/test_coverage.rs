@@ -51,7 +51,7 @@ fn push_outside_pool_targets_shard_zero() {
     let f: Frontier<usize> = Frontier::with_threads(&pool, None);
     f.push(1);
     f.push(2);
-    assert_eq!(f.as_ref()[0], vec![1, 2]);
+    assert_eq!(*f.as_ref()[0], vec![1, 2]);
     assert!(f.as_ref()[1].is_empty());
 }
 
@@ -81,7 +81,7 @@ fn push_on_thread_targets_chosen_shard() {
         return;
     }
     unsafe { f.push_on_thread(7, 1) };
-    assert_eq!(f.as_ref()[1], vec![7]);
+    assert_eq!(*f.as_ref()[1], vec![7]);
     assert_eq!(f.len(), 1);
 }
 
@@ -131,7 +131,7 @@ fn shrink_to_fit_keeps_contents() {
 #[test]
 fn from_vec_lands_in_first_shard() {
     let f: Frontier<usize> = Frontier::from(vec![1, 2, 3]);
-    assert_eq!(f.as_ref()[0], vec![1, 2, 3]);
+    assert_eq!(*f.as_ref()[0], vec![1, 2, 3]);
     assert_eq!(f.iter().copied().collect::<Vec<_>>(), vec![1, 2, 3]);
 }
 
