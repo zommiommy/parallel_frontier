@@ -1,5 +1,47 @@
 # Change Log
 
+## [0.3.0] - 2026-05-06
+
+### New
+
+- `Shard<T>` is now public and implements `Deref` / `DerefMut` to
+  `Vec<T>`, so callers reaching shards through `AsRef` / `AsMut`
+  keep ergonomic access to the inner `Vec` API.
+- `Frontier<'_, T>` implements `Extend<T>` with round-robin
+  distribution across shards. Use `frontier.extend(iter)` to safely
+  initialize a frontier from any iterator under `&mut self`,
+  replacing the previous `as_mut()[0] = vec` idiom.
+- `Frontier::par_clear` and `Frontier::par_shrink_to_fit` parallelize
+  the corresponding sequential methods over the shards (gated on
+  `T: Send`). Worth using when `T` has a non-trivial `Drop` or each
+  shard is large enough that `realloc` dominates.
+- `FrontierIter` now implements `FusedIterator`, and the hot iterator
+  methods are `#[inline]` so cross-crate users get them folded into
+  the caller.
+
+### Changed
+
+- **Breaking**: `Shard<T>` is now `#[repr(align(64))]` instead of
+  `#[repr(transparent)]`. Each shard occupies its own cache line,
+  eliminating false sharing between the per-thread `Vec` headers
+  during concurrent pushes.
+- **Breaking**: `Frontier<'_, T>` exposes `AsRef<[Shard<T>]>` /
+  `AsMut<[Shard<T>]>` instead of `AsRef<[Vec<T>]>` /
+  `AsMut<[Vec<T>]>`. Callers should switch to the shard slice and
+  rely on `Deref` / `DerefMut` for `Vec` access, or use the new
+  `Extend` impl for initialization.
+
+### Improved
+
+- `Frontier::is_empty` now short-circuits on the first non-empty shard
+  instead of summing every shard length.
+- `Frontier::extend` rotates over `&mut self.data` directly to avoid
+  the per-element bounds check and the `if idx == n { idx = 0 }`
+  branch.
+- `FrontierProducer` stores cumulative shard offsets as
+  `Arc<[usize]>` instead of `Arc<Vec<usize>>`, dropping the unused
+  capacity field.
+
 ## [0.2.0] - 2026-05-05
 
 ### Changed
