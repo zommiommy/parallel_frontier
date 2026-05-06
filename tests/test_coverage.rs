@@ -588,3 +588,26 @@ fn test_iter_is_fused() -> anyhow::Result<()> {
     assert_eq!(it.next_back(), None);
     Ok(())
 }
+
+#[test]
+fn test_par_clear_empties_every_shard() -> anyhow::Result<()> {
+    let mut f: Frontier<usize> = Frontier::new();
+    for v in f.as_mut().iter_mut() {
+        v.extend([1, 2, 3]);
+    }
+    assert_eq!(f.len(), 3 * f.number_of_threads());
+    f.par_clear();
+    assert!(f.is_empty());
+    Ok(())
+}
+
+#[test]
+fn test_par_shrink_to_fit_keeps_contents() -> anyhow::Result<()> {
+    let mut f: Frontier<usize> = Frontier::with_capacity(1024);
+    f.push(1);
+    f.push(2);
+    f.par_shrink_to_fit();
+    assert_eq!(f.len(), 2);
+    assert_eq!(f.iter().copied().collect::<Vec<_>>(), vec![1, 2]);
+    Ok(())
+}

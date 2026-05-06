@@ -371,6 +371,30 @@ impl<T: Send + Sync> Frontier<'_, T> {
     }
 }
 
+impl<T: Send> Frontier<'_, T> {
+    /// Parallel counterpart of [`Frontier::clear`].
+    ///
+    /// Each shard is cleared on a Rayon worker. Useful when `T` has a
+    /// non-trivial `Drop` (boxed allocations, owned strings, nested
+    /// containers); for `T: Copy` the sequential [`Frontier::clear`] is
+    /// already O(n_shards) and the Rayon scheduler overhead makes this
+    /// version slower.
+    #[inline]
+    pub fn par_clear(&mut self) {
+        self.data.par_iter_mut().for_each(|s| s.clear());
+    }
+
+    /// Parallel counterpart of [`Frontier::shrink_to_fit`].
+    ///
+    /// Each shard's `realloc` happens on a Rayon worker. Worth using when
+    /// shards are large enough that the per-shard allocator call dominates
+    /// the total cost.
+    #[inline]
+    pub fn par_shrink_to_fit(&mut self) {
+        self.data.par_iter_mut().for_each(|s| s.shrink_to_fit());
+    }
+}
+
 impl<T: core::fmt::Debug> core::fmt::Debug for Frontier<'_, T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Frontier")
