@@ -111,6 +111,8 @@ impl<T> core::iter::DoubleEndedIterator for FrontierIter<'_, T> {
 }
 
 impl<T> core::iter::ExactSizeIterator for FrontierIter<'_, T> {}
+
+impl<T> core::iter::FusedIterator for FrontierIter<'_, T> {}
 /// Rayon `Producer` and `UnindexedProducer` over a [`Frontier`].
 ///
 /// Splits are pure range arithmetic on the half-open interval `[start, end)`
