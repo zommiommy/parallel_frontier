@@ -432,7 +432,7 @@ impl<T> Extend<T> for Frontier<'_, T> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         let n = self.data.len();
         debug_assert!(n > 0, "frontier always has at least one shard");
-        let iter = iter.into_iter();
+        let mut iter = iter.into_iter();
         let (lower, _) = iter.size_hint();
         if lower > 0 {
             // Reserve a roughly balanced amount per shard so the round-robin
@@ -442,12 +442,16 @@ impl<T> Extend<T> for Frontier<'_, T> {
                 shard.reserve(per_shard);
             }
         }
-        let mut idx = 0;
-        for value in iter {
-            self.data[idx].push(value);
-            idx += 1;
-            if idx == n {
-                idx = 0;
+        // Rotate over `&mut self.data` rather than indexing with a counter.
+        // The inner loop walks every shard exactly once, the outer loop
+        // restarts it for the next round-robin pass, and the iterator
+        // exhaustion path is a single `break 'outer`.
+        'outer: loop {
+            for shard in &mut self.data {
+                match iter.next() {
+                    Some(value) => shard.push(value),
+                    None => break 'outer,
+                }
             }
         }
     }
