@@ -4,8 +4,7 @@
 
 ### Changed
 
-- License is now `Apache-2.0 OR MIT` (previously
-  `Apache-2.0 OR LGPL-2.1-or-later`).
+- License is now MIT or Apache.
 
 ## [0.3.1] - 2026-05-06
 
