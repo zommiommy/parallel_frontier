@@ -1,10 +1,10 @@
 [package]
 name = "parallel_frontier"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 description = "Queue-like frontier for breath-first visits on graphs that supports constant-time concurrent pushes and parallel iteration"
 repository = "https://github.com/zommiommy/parallel_frontier/"
-license = "Apache-2.0 OR LGPL-2.1-or-later"
+license = "Apache-2.0 OR MIT"
 readme = "README.md"
 keywords = ["graph", "bfs", "queue"]
 categories = ["data-structures"]

@@ -1,5 +1,12 @@
 # Change Log
 
+## [0.3.2] - 2026-07-23
+
+### Changed
+
+- License is now `Apache-2.0 OR MIT` (previously
+  `Apache-2.0 OR LGPL-2.1-or-later`).
+
 ## [0.3.1] - 2026-05-06
 
 ### Improved
@@ -89,4 +96,4 @@ Changed rust edition from 2024 -> 2021.
 
 ### New
 
-First release.
+- First release.
